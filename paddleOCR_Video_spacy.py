@@ -1,6 +1,7 @@
 import math
 import threading
 import tkinter as tk
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -33,6 +34,15 @@ def draw_text(image, text, position):
     font = ImageFont.truetype(font_path, 20)
     draw.text(position, text, font=font, fill=(0, 0, 255, 0))
     return np.array(img_pil)
+
+
+def calculate_iou(box1, box2):
+    xi1, yi1, xi2, yi2 = max(box1[0], box2[0]), max(box1[1], box2[1]), min(box1[2], box2[2]), min(box1[3], box2[3])
+    inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    union_area = box1_area + box2_area - inter_area
+    return inter_area / union_area
 
 
 class App:
@@ -101,40 +111,70 @@ class App:
             edged = cv2.Canny(blurred, 30, 150)
             contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             image_with_contours = cv2.drawContours(self.img_gray.copy(), contours, -1, (0, 255, 0), 2)
-            result_en = self.ocr_en.ocr(image_with_contours)
+
+            scales = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+            all_results = []
+
+            for scale in scales:
+                scaled_img = cv2.resize(image_with_contours.copy(), None, fx=scale, fy=scale)
+                result_en = self.ocr_en.ocr(scaled_img)
+
+                if result_en is not None:
+                    for line in result_en:
+                        if line is not None:
+                            for word_info in line:
+                                word = word_info[1][0]
+                                similarity_score = self.calculate_similarity(word)
+                                confidence = word_info[1][1]
+                                if confidence > 0.85 and similarity_score >= 0.85:
+                                    rect_color = (0, 255, 0)
+                                    coordinates = word_info[0]
+                                    x_min = float(min(pt[0] for pt in coordinates)) / scale
+                                    y_min = float(min(pt[1] for pt in coordinates)) / scale
+                                    x_max = float(max(pt[0] for pt in coordinates)) / scale
+                                    y_max = float(max(pt[1] for pt in coordinates)) / scale
+                                    all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
+                                else:
+                                    rect_color = (0, 0, 255)
+                                    coordinates = word_info[0]
+                                    x_min = float(min(pt[0] for pt in coordinates)) / scale
+                                    y_min = float(min(pt[1] for pt in coordinates)) / scale
+                                    x_max = float(max(pt[0] for pt in coordinates)) / scale
+                                    y_max = float(max(pt[1] for pt in coordinates)) / scale
+                                    all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
+
+            all_results.sort(key=lambda x: -x[2])
+
+            keep = [1] * len(all_results)
+            for i in range(len(all_results)):
+                if keep[i] == 0:
+                    continue
+                _, box1, _, _ = all_results[i]
+                for j in range(i + 1, len(all_results)):
+                    if keep[j] == 0:
+                        continue
+                    _, box2, _, _ = all_results[j]
+                    if calculate_iou(box1, box2) > 0.25:
+                        keep[j] = 0
+
             result_img = self.img_bgr.copy()
 
-            if result_en is not None:
-                for line in result_en:
-                    if line is not None:
-                        for word_info in line:
-                            word = word_info[1][0]
-                            similarity_score = self.calculate_similarity(word)
-                            if similarity_score >= 0.85:
-                                rect_color = (0, 255, 0)
-                            else:
-                                rect_color = (0, 0, 255)
-                            confidence = word_info[1][1]
-                            if confidence > 0.85:
-                                coordinates = word_info[0]
-                                x_min = int(min(pt[0] for pt in coordinates))
-                                y_min = int(min(pt[1] for pt in coordinates))
-                                x_max = int(max(pt[0] for pt in coordinates))
-                                y_max = int(max(pt[1] for pt in coordinates))
-                                cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2
-                                              )
-                                result_img = draw_text(result_img, word, (x_min, y_min - 5))
+            for k, (word, box, _, rect_color) in enumerate(all_results):
+                if keep[k] == 1:
+                    x_min, y_min, x_max, y_max = map(int, box)
+                    cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2)
+                    result_img = draw_text(result_img, word, (x_min, y_min - 5))
 
-                cv2.imwrite('Result_paddle.jpg', result_img)
+            cv2.imwrite('Result_paddle.jpg', result_img)
 
-                import matplotlib.pyplot as plt
-                plt.figure("Snapshot")
-                plt.imshow(result_img)
-                plt.axis('off')
-                plt.show()
+            import matplotlib.pyplot as plt
+            plt.figure("Result")
+            plt.imshow(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
+            plt.axis('off')
+            plt.show()
 
-                ocr_result_en = '\n'.join([word_info[1][0] for line in result_en for word_info in line])
-                self.result_label.config(text=ocr_result_en)
+            # ocr_result_en = '\n'.join([word_info[1][0] for line in result_en for word_info in line])
+            # self.result_label.config(text=ocr_result_en)
 
     def close(self):
         if self.vid and self.vid.isOpened():
