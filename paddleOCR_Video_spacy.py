@@ -1,8 +1,10 @@
 import math
+import multiprocessing
 import threading
 import tkinter as tk
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
 import MeCab
 import matplotlib.pyplot as plt
@@ -29,6 +31,22 @@ nlp = spacy.load('ja_core_news_md')  # SpaCyの日本語モデルを読み込み
 ocr_to_accepted_words = ocr_to_accepted_words
 
 
+def apply_canny(eroded):
+    return cv2.Canny(eroded, 30, 150)
+
+
+def apply_sobel(blurred):
+    sobel_x = cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=5)
+    sobel_y = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=5)
+    sobel_edges = cv2.magnitude(sobel_x, sobel_y)
+    return cv2.convertScaleAbs(sobel_edges)
+
+
+def apply_laplacian(blurred):
+    laplacian = cv2.Laplacian(blurred, cv2.CV_64F)
+    return cv2.convertScaleAbs(laplacian)
+
+
 def play_sound(file_path):
     pygame.mixer.init()
     pygame.mixer.music.load(file_path)
@@ -37,7 +55,7 @@ def play_sound(file_path):
 
 def adjust_clahe_params(image, clip_limit_range=(1.0, 10.0), tile_grid_size_range=(2, 10)):
     # 计算图像的全局对比度
-    mean = np.mean(image)
+    # mean = np.mean(image)
     stddev = np.std(image)
 
     # 根据标准差调整 clipLimit
@@ -98,6 +116,20 @@ def calculate_image_iou(box1, box2):
     box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])  # ボックス2の面積を計算
     union_area = box1_area + box2_area - inter_area  # 結合部分の面積を計算
     return inter_area / union_area  # IOUを返す
+
+
+def analyze_roi(gray):
+    # Convert the image to grayscale
+
+    # Use thresholding to identify the regions of interest
+    # Here I use Otsu's binarization method for thresholding.
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Draw contours around the defined ROIs
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    roi_image = cv2.drawContours(gray.copy(), contours, -1, (0, 255, 0), 3)
+
+    return roi_image
 
 
 import numpy as np
@@ -163,6 +195,9 @@ def calculate_video_ciou(box1, box2):
 
 class App:
     def __init__(self, window, window_title, video_source=0):
+
+        cpu_cores = multiprocessing.cpu_count()  # 获取CPU核数
+
         self.window = window  # Tkinterウィンドウの設定
         # self.window.title(window_title)  # ウィンドウのタイトル設定
         self.video_source = video_source  # ビデオソースの設定
@@ -171,7 +206,7 @@ class App:
         self.result_label = tk.Label(window, text="光学文字認識")  # OCR結果を表示するラベルの作成
         self.result_label.pack()  # ラベルをウィンドウに配置
         self.camera_open = False  # カメラのオープン状態の初期化
-        self.thread_pool = ThreadPoolExecutor(max_workers=4)  # スレッドプールの設定
+        self.thread_pool = ThreadPoolExecutor(max_workers=cpu_cores)  # スレッドプールの設定
 
         # ボタンの設定と配置
         self.buttons = {
@@ -219,7 +254,7 @@ class App:
         if self.camera_open:  # カメラがオープンしている場合
             ret, frame = self.vid.read()  # フレームの読み取り
             if ret:  # フレームが正常に読み取られた場合
-                self.img_bgr = frame.copy()  # BGR画像のコピー
+                self.img_bgr = frame.view()  # BGR画像のコピー
                 self.img_rgb = cv2.cvtColor(self.img_bgr, cv2.COLOR_BGR2RGB)  # BGRからRGBに変換
                 self.photo = ImageTk.PhotoImage(image=Image.fromarray(self.img_rgb))  # PIL画像からTkinterのPhotoImageに変換
                 self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)  # キャンバスに画像を表示
@@ -241,7 +276,10 @@ class App:
             cv2.imwrite('gray_paddle.jpg', self.img_gray)  # グレースケール画像をファイルに保存
             # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
             # cl1 = clahe.apply(self.img_gray)  # CLAHEの適用
-            clahe_image = adjust_clahe_params(self.img_gray)
+
+            roi_image = analyze_roi(self.img_gray)
+
+            clahe_image = adjust_clahe_params(roi_image)
             blurred = automatic_gaussian_blur(clahe_image)  # ガウスぼかしの適用
 
             kernel = np.ones((3, 3), dtype=np.uint8)  # カーネルの作成
@@ -430,9 +468,10 @@ class App:
         if self.camera_open:  # カメラがオープンしている場合
             ret, frame = self.vid.read()  # フレームの読み取り
             if ret:  # フレームが正常に読み取られた場合
-                img_bgr = frame
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # BGR画像をグレースケールに変換
-                clahe_image = adjust_clahe_params(gray)
+                img_bgr = frame.view()
+                gray = cv2.cvtColor(frame.view(), cv2.COLOR_BGR2GRAY)  # BGR画像をグレースケールに変換
+                roi_image = analyze_roi(gray)
+                clahe_image = adjust_clahe_params(roi_image)
                 # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
                 # cl1 = clahe.apply(gray)  # CLAHEの適用
                 blurred = automatic_gaussian_blur(clahe_image)  # ガウスぼかしの適用
@@ -441,16 +480,23 @@ class App:
                 dilated = cv2.dilate(blurred, kernel, iterations=2)  # 膨張処理の適用
                 eroded = cv2.erode(dilated, kernel, iterations=1)  # 衰退処理の適用
 
-                canny_edges = cv2.Canny(eroded, 30, 150)  # Cannyエッジ検出の実行
-                sobel_x = cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=5)  # Sobelフィルタ（x方向）の適用
-                sobel_y = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=5)  # Sobelフィルタ（y方向）の適用
-                sobel_edges = cv2.magnitude(sobel_x, sobel_y)  # Sobelエッジの計算
-                sobel_edges = cv2.convertScaleAbs(sobel_edges)  # 絶対値の変換
+                with ThreadPoolExecutor() as executor:
+                    futures = {
+                        executor.submit(apply_canny, eroded): 'canny',
+                        executor.submit(apply_sobel, blurred): 'sobel',
+                        executor.submit(apply_laplacian, blurred): 'laplacian'
+                    }
 
-                laplacian = cv2.Laplacian(blurred, cv2.CV_64F)
-                laplacian_edges = cv2.convertScaleAbs(laplacian)
+                    results = {}
+                    for future in futures:
+                        result_name = futures[future]
+                        results[result_name] = future.result()
 
-                edged = np.maximum(canny_edges, sobel_edges)  # CannyエッジとSobelエッジの最大値を計算
+                canny_edges = results['canny']
+                sobel_edges = results['sobel']
+                laplacian_edges = results['laplacian']
+
+                edged = np.maximum(canny_edges, sobel_edges)
                 edged = np.maximum(edged, laplacian_edges)
 
                 contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # 輪郭の検出
@@ -527,7 +573,7 @@ class App:
                         radius = 40
                         cv2.circle(result_img, center, radius, (0, 255, 0), thickness=3)
 
-                        play_sound("japanese_audio.mp3")
+                        # play_sound("japanese_audio.mp3")
                     else:
 
                         size = 40
@@ -569,6 +615,7 @@ class App:
         self.bert_cache[text] = embedding
         return embedding
 
+    @lru_cache(maxsize=100)
     def get_bert_similarity(self, text1, text2):
         embedding1 = self.get_bert_embedding(text1)
         embedding2 = self.get_bert_embedding(text2)
