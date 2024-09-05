@@ -172,10 +172,12 @@ def analyze_roi(gray):
 
     # Use thresholding to identify the regions of interest
     # Here I use Otsu's binarization method for thresholding.
-    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                   cv2.THRESH_BINARY_INV, 11, 2)
 
     # Draw contours around the defined ROIs
-    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     roi_image = cv2.drawContours(gray.copy(), contours, -1, (0, 255, 0), 3)
 
     return roi_image
