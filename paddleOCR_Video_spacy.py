@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import MeCab
 import matplotlib.pyplot as plt
+import pygame
 import torch
 from fuzzywuzzy import fuzz
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -24,8 +25,14 @@ from transformers import BertTokenizer, BertModel, BertJapaneseTokenizer
 from acceptedWords import ocr_to_accepted_words
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # 環境変数の設定
-nlp = spacy.load('ja_core_news_lg')  # SpaCyの日本語モデルを読み込み
+nlp = spacy.load('ja_core_news_md')  # SpaCyの日本語モデルを読み込み
 ocr_to_accepted_words = ocr_to_accepted_words
+
+
+def play_sound(file_path):
+    pygame.mixer.init()
+    pygame.mixer.music.load(file_path)
+    pygame.mixer.music.play()
 
 
 def adjust_clahe_params(image, clip_limit_range=(1.0, 10.0), tile_grid_size_range=(2, 10)):
@@ -265,6 +272,7 @@ class App:
                                         word = calculate_word
                                         all_results.append(
                                             (word, [x_min, y_min, x_max, y_max], confidence, rect_color))  # 結果をリストに追加
+
                                     # else:
                                     #     rect_color = (0, 0, 255)
                                     #     coordinates = word_info[0]
@@ -304,6 +312,8 @@ class App:
                 center = (width - 50, height - 50)
                 radius = 40
                 cv2.circle(result_img, center, radius, (0, 255, 0), thickness=3)
+
+                play_sound("japanese_audio.mp3")
             else:
 
                 pt1 = (width - 60, height - 60)
@@ -352,12 +362,18 @@ class App:
         max_sim = 0  # 最大類似度の初期化
         best_match = word
         for accepted_word in self.ocr_label.keys():  # すべての受け入れ可能な単語と比較
+
+            token1 = nlp(word)  # 単語をSpaCyトークンに変換
+            token2 = nlp(accepted_word)  # 受け入れ可能な単語をSpaCyトークンに変換
+            spacy_sim = token1.similarity(token2)  # SpaCyによる類似度計算
+            fuzzy_sim = fuzz.ratio(word.lower(), accepted_word.lower()) / 100.0  # FuzzyWuzzyによる類似度計算
+
             self.prepare_texts(word, accepted_word)
             # bert_sim = self.get_bert_similarity(word, accepted_word)
             jaccard_sim = self.jaccard_similarity(word, accepted_word)
             levenshtein_sim = self.levenshtein_similarity(word, accepted_word)
 
-            sim = 0.5 * jaccard_sim + 0.5 * levenshtein_sim
+            sim = 0.15 * spacy_sim + 0.15 * fuzzy_sim + 0.35 * jaccard_sim + 0.35 * levenshtein_sim
 
             if sim > max_sim:  # 最大類似度を更新
                 max_sim = sim
@@ -423,7 +439,7 @@ class App:
                         if line is not None:
                             for word_info in line:  # 各単語に対して処理
                                 word = word_info[1][0]  # 単語の取得
-                                # print(word)
+                                print(word)
                                 similarity_score = 0
                                 calculate_word = None
                                 result = self.combined_similarity(word)  # 単語の類似度計算
@@ -468,6 +484,26 @@ class App:
                             x_min, y_min, x_max, y_max = box  # 座標を取得
                             cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2)  # 長方形を描画
                             result_img = draw_text(result_img, word, (x_min, y_min - 5))  # テキストを描画
+
+                    detected_objects = any(keep)
+
+                    height, width, _ = result_img.shape
+                    center = (width - 80, height - 160)
+                    if detected_objects:
+
+                        radius = 40
+                        cv2.circle(result_img, center, radius, (0, 255, 0), thickness=3)
+
+                        play_sound("japanese_audio.mp3")
+                    else:
+
+                        size = 40
+                        cv2.line(result_img, (center[0] - size, center[1] - size), (center[0] + size, center[1] + size),
+                                 (0, 0, 255),
+                                 thickness=3)
+                        cv2.line(result_img, (center[0] + size, center[1] - size), (center[0] - size, center[1] + size),
+                                 (0, 0, 255),
+                                 thickness=3)
 
                     self.photo = ImageTk.PhotoImage(
                         image=Image.fromarray(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)))  # 画像をTkinter形式に変換

@@ -2,7 +2,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkfont
-from paddleOCR_Video_spacy_20240808_05 import App
+from paddleOCR_Video_spacy_20240809_07 import App
 from MultiLevelButtonSearch20240808_07 import MultiLevelButtonSearchApp
 import queue
 
