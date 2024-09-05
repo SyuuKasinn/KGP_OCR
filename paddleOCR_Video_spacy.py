@@ -111,13 +111,17 @@ def adjust_clahe_params(self, image, clip_limit_range=(1.0, 10.0), tile_grid_siz
 
 
 def automatic_gaussian_blur(image):
-    if len(image.shape) == 2:  # 画像がグレースケールの場合
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)  # グレースケールからBGRに変換
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # 画像をグレースケールに変換
-    kernel_size = math.floor(gray.shape[1] / 20)  # カーネルサイズの計算
-    kernel_size = kernel_size if kernel_size % 2 == 1 else kernel_size + 1  # カーネルサイズを奇数に調整
-    blurred = cv2.GaussianBlur(gray, (kernel_size, kernel_size), 0)  # ガウスぼかしの適用
-    return blurred
+    try:
+        if len(image.shape) == 2:  # 画像がグレースケールの場合
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)  # グレースケールからBGRに変換
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # 画像をグレースケールに変換
+        kernel_size = math.floor(gray.shape[1] / 20)  # カーネルサイズの計算
+        kernel_size = kernel_size if kernel_size % 2 == 1 else kernel_size + 1  # カーネルサイズを奇数に調整
+        blurred = cv2.GaussianBlur(gray, (kernel_size, kernel_size), 0)  # ガウスぼかしの適用
+        return blurred
+    except Exception as e:
+        print(f"ガウスぼかしの適用中にエラーが発生しました: {e}")
+        return image
 
 
 # Python code
@@ -284,13 +288,17 @@ class App:
         self.clahe_threshold = 1.0
 
     def open_camera(self):
-        if not self.camera_open:  # カメラがまだオープンしていない場合
-            self.vid = cv2.VideoCapture(self.video_source)  # ビデオキャプチャオブジェクトの作成
-            if self.vid.isOpened():  # ビデオキャプチャが成功した場合
-                self.camera_open = True  # カメラがオープンした状態に設定
-                self.canvas.config(width=self.vid.get(cv2.CAP_PROP_FRAME_WIDTH),
-                                   height=self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT))  # キャンバスのサイズをビデオフレームのサイズに設定
-                self.button_widgets["スナップショット"].config(state='normal')
+        try:
+            if not self.camera_open:  # カメラがまだオープンしていない場合
+                self.vid = cv2.VideoCapture(self.video_source)  # ビデオキャプチャオブジェクトの作成
+                if self.vid.isOpened():  # ビデオキャプチャが成功した場合
+                    self.camera_open = True  # カメラがオープンした状態に設定
+                    self.canvas.config(width=self.vid.get(cv2.CAP_PROP_FRAME_WIDTH),
+                                       height=self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT))  # キャンバスのサイズをビデオフレームのサイズに設定
+                    self.button_widgets["スナップショット"].config(state='normal')
+        except Exception as e:
+            print(f"カメラを開くときにエラーが発生しました: {e}")
+            self.camera_open = False
 
     def take_snapshot(self):
         if self.camera_open:  # カメラがオープンしている場合
@@ -544,13 +552,12 @@ class App:
                 contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # 輪郭の検出
                 image_with_contours = cv2.drawContours(gray.copy(), contours, -1, (0, 255, 0), 2)  # 輪郭を画像に描画
 
-                with ThreadPoolExecutor() as executor:  # スレッドプールの作成
-                    try:
-                        future = executor.submit(self.process_ocr, image_with_contours)  # OCR処理をスレッドプールで実行
-                        result_en = future.result()  # 結果の取得
-                    except Exception as e:
-                        print(f"OCR process failed with error: {e}")
-                        result_en = None  # or set a reasonable default value
+                try:
+                    future = self.thread_pool.submit(self.process_ocr, image_with_contours)  # OCR処理をスレッドプールで実行
+                    result_en = future.result()  # 結果の取得
+                except Exception as e:
+                    print(f"OCR process failed with error: {e}")
+                    result_en = None  # or set a reasonable default value
 
                 result_img = img_bgr.copy()  # 結果画像のコピー
 
@@ -639,7 +646,7 @@ class App:
                 self.ocr_label = {corrected: possible_responses}
 
     def prepare_texts(self, text1, text2):
-        if text1 and text2:
+        if text1.strip() and text2.strip():
             self.vectorizer = TfidfVectorizer(stop_words=None)
             try:
                 self.tfidf = self.vectorizer.fit_transform([text1, text2])
