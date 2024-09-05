@@ -21,6 +21,25 @@ ocr_to_accepted_words = {
 }
 
 
+def adjust_clahe_params(image, clip_limit_range=(1.0, 10.0), tile_grid_size_range=(2, 10)):
+    # 计算图像的全局对比度
+    mean = np.mean(image)
+    stddev = np.std(image)
+
+    # 根据标准差调整 clipLimit
+    clip_limit = min(max(stddev / 10.0, clip_limit_range[0]), clip_limit_range[1])
+
+    # 根据图像的尺寸调整 tileGridSize
+    height, width = image.shape
+    tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]), tile_grid_size_range[1])
+
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
+    clahe_image = clahe.apply(image)
+
+    # 返回增强后的图像
+    return clahe_image
+
+
 def automatic_gaussian_blur(image):
     if len(image.shape) == 2:  # 画像がグレースケールの場合
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)  # グレースケールからBGRに変換
@@ -50,57 +69,63 @@ def calculate_image_iou(box1, box2):
     return inter_area / union_area  # IOUを返す
 
 
+import numpy as np
+
+
 def calculate_video_ciou(box1, box2):
-    # 解包框坐标
+    # ボックスの座標を展開します
     x1, y1, x2, y2 = box1
     x1_, y1_, x2_, y2_ = box2
 
-    # 计算交集的坐标
+    # 交差領域の座標を計算します
     xi1 = max(x1, x1_)
     yi1 = max(y1, y1_)
     xi2 = min(x2, x2_)
     yi2 = min(y2, y2_)
 
-    # 计算交集的面积
+    # 交差領域の面積を計算します
     inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
 
-    # 计算两个框的面积
+    # 各ボックスの面積を計算します
     box1_area = (x2 - x1) * (y2 - y1)
     box2_area = (x2_ - x1_) * (y2_ - y1_)
 
-    # 计算并集的面积
+    # 和集合の面積を計算します
     union_area = box1_area + box2_area - inter_area
 
-    # 计算IoU（交并比）
-    iou = inter_area / union_area
+    # IoU (Intersection over Union) を計算します
+    iou = inter_area / union_area if union_area != 0 else 0
 
-    # 计算最小包围框的坐标
+    # 最小外接矩形の座標を計算します
     min_x = min(x1, x1_)
     min_y = min(y1, y1_)
     max_x = max(x2, x2_)
     max_y = max(y2, y2_)
 
-    # 计算包围框的面积
+    # 最小外接矩形の面積を計算します
     c_area = (max_x - min_x) * (max_y - min_y)
 
-    # 计算GIoU（广义交并比）
-    giou = iou - (c_area - union_area) / c_area
+    # GIoU (Generalized Intersection over Union) を計算します
+    giou = iou - (c_area - union_area) / c_area if c_area != 0 else iou - 1
 
-    # 计算中心点距离
+    # 中心点の距離を計算します
     center1 = np.array([(x1 + x2) / 2, (y1 + y2) / 2])
     center2 = np.array([(x1_ + x2_) / 2, (y1_ + y2_) / 2])
     center_dist = np.linalg.norm(center1 - center2)
 
-    # 计算长宽比
+    # 最小外接矩形の対角線の長さを計算します
+    diag_length = np.linalg.norm([max_x - min_x, max_y - min_y])
+
+    # 長さと幅の比率を計算します
     w1, h1 = x2 - x1, y2 - y1
     w2, h2 = x2_ - x1_, y2_ - y1_
-    aspect_ratio1 = w1 / h1
-    aspect_ratio2 = w2 / h2
+    aspect_ratio1 = w1 / h1 if h1 != 0 else 0
+    aspect_ratio2 = w2 / h2 if h2 != 0 else 0
     aspect_ratio_dist = (aspect_ratio1 - aspect_ratio2) ** 2
 
-    # 计算CIoU（完全交并比）
-    alpha = aspect_ratio_dist / (1 - iou)
-    ciou = giou - (center_dist / (max_x - min_x + max_y - min_y)) - alpha
+    # CIoU (Complete Intersection over Union) を計算します
+    alpha = aspect_ratio_dist / (1 - iou + 1e-10)  # ゼロ除算を避けるために小さな定数を追加
+    ciou = giou - (center_dist / (diag_length + 1e-10)) - alpha  # ゼロ除算を避けるために小さな定数を追加
 
     return ciou
 
@@ -125,8 +150,16 @@ class App:
             "Exit": self.close
         }
 
-        for button_text, button_command in self.buttons.items():
-            tk.Button(window, text=button_text, width=20, command=button_command).pack()  # ボタンの作成と配置
+        self.button_widgets = {}
+        for name, action in self.buttons.items():
+            btn = tk.Button(window, text=name, width=20, command=action)
+            btn.pack()
+            self.button_widgets[name] = btn
+        self.button_widgets["Snapshot"].config(state='disabled')
+        self.button_widgets["OCR"].config(state='disabled')
+        #
+        # for button_text, button_command in self.buttons.items():
+        #     tk.Button(window, text=button_text, width=20, command=button_command).pack()  # ボタンの作成と配置
 
         self.canvas = tk.Canvas(self.window, width=640, height=480)  # 画像を表示するためのキャンバスの作成
         self.canvas.pack()  # キャンバスをウィンドウに配置
@@ -141,6 +174,7 @@ class App:
                 self.camera_open = True  # カメラがオープンした状態に設定
                 self.canvas.config(width=self.vid.get(cv2.CAP_PROP_FRAME_WIDTH),
                                    height=self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT))  # キャンバスのサイズをビデオフレームのサイズに設定
+                self.button_widgets["Snapshot"].config(state='normal')
 
     def take_snapshot(self):
         if self.camera_open:  # カメラがオープンしている場合
@@ -155,18 +189,21 @@ class App:
                 plt.imshow(self.img_rgb)  # RGB画像を表示
                 plt.axis('off')  # 軸を非表示に設定
                 plt.show()  # 画像を表示
+                self.button_widgets["OCR"].config(state='normal')
 
     def perform_ocr(self):
         if self.camera_open and hasattr(self, 'img_bgr'):  # カメラがオープンしており、画像が存在する場合
             self.thread_pool.submit(self._perform_ocr)  # OCR処理をスレッドプールで実行
+            self.button_widgets["Snapshot"].config(state='disabled')
 
     def _perform_ocr(self):
         if self.camera_open and hasattr(self, 'img_bgr'):  # カメラがオープンしており、画像が存在する場合
             self.img_gray = cv2.cvtColor(self.img_bgr, cv2.COLOR_BGR2GRAY)  # BGR画像をグレースケールに変換
             cv2.imwrite('gray_paddle.jpg', self.img_gray)  # グレースケール画像をファイルに保存
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
-            cl1 = clahe.apply(self.img_gray)  # CLAHEの適用
-            blurred = automatic_gaussian_blur(cl1)  # ガウスぼかしの適用
+            # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
+            # cl1 = clahe.apply(self.img_gray)  # CLAHEの適用
+            clahe_image = adjust_clahe_params(self.img_gray)
+            blurred = automatic_gaussian_blur(clahe_image)  # ガウスぼかしの適用
 
             kernel = np.ones((3, 3), dtype=np.uint8)  # カーネルの作成
             dilated = cv2.dilate(blurred, kernel, iterations=2)  # 膨張処理の適用
@@ -254,6 +291,8 @@ class App:
                     print(f"An error occurred when displaying the image: {e}")
             plt.axis('off')  # 軸を非表示に設定
             plt.show()  # 画像の表示
+            self.button_widgets["Snapshot"].config(state='normal')
+            self.button_widgets["OCR"].config(state='disabled')
 
             # ocr_result_en = '\n'.join([word_info[1][0] for line in result_en for word_info in line])  # OCR結果の連結（コメントアウトされている）
             # self.result_label.config(text=ocr_result_en)  # OCR結果をラベルに表示（コメントアウトされている）
@@ -293,9 +332,10 @@ class App:
             if ret:  # フレームが正常に読み取られた場合
                 img_bgr = frame
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # BGR画像をグレースケールに変換
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
-                cl1 = clahe.apply(gray)  # CLAHEの適用
-                blurred = automatic_gaussian_blur(cl1)  # ガウスぼかしの適用
+                clahe_image = adjust_clahe_params(gray)
+                # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
+                # cl1 = clahe.apply(gray)  # CLAHEの適用
+                blurred = automatic_gaussian_blur(clahe_image)  # ガウスぼかしの適用
 
                 kernel = np.ones((3, 3), dtype=np.uint8)  # カーネルの作成
                 dilated = cv2.dilate(blurred, kernel, iterations=2)  # 膨張処理の適用
