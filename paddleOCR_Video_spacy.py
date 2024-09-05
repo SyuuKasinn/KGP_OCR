@@ -32,6 +32,13 @@ nlp = spacy.load('ja_core_news_md')  # SpaCyの日本語モデルを読み込み
 ocr_to_accepted_words = ocr_to_accepted_words
 
 
+def correct_lens_distortion(image, K, D):
+    h, w = image.shape[:2]
+    new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(K, D, (w, h), 1, (w, h))
+    undistorted_img = cv2.undistort(image, K, D, None, new_camera_matrix)
+    return undistorted_img
+
+
 def apply_canny(eroded):
     return cv2.Canny(eroded, 30, 150)
 
@@ -54,14 +61,19 @@ def play_sound(file_path):
     pygame.mixer.music.play()
 
 
+def compute_sample_bounds(image, sample_fraction):
+    height, width = image.shape
+    start_row = int((1 - sample_fraction) / 2 * height)
+    end_row = start_row + int(sample_fraction * height)
+    start_col = int((1 - sample_fraction) / 2 * width)
+    end_col = start_col + int(sample_fraction * width)
+    return start_row, start_col, end_row, end_col
+
+
 def get_sample_stats(image, sample_fraction=0.5):
     try:
         # Calculate the size of the sample region
-        height, width = image.shape
-        start_row = int((1 - sample_fraction) / 2 * height)
-        end_row = start_row + int(sample_fraction * height)
-        start_col = int((1 - sample_fraction) / 2 * width)
-        end_col = start_col + int(sample_fraction * width)
+        start_row, start_col, end_row, end_col = compute_sample_bounds(image, sample_fraction)
 
         # Extract and compute statistics for the sample region
         sample = image[start_row:end_row, start_col:end_col]
@@ -70,43 +82,41 @@ def get_sample_stats(image, sample_fraction=0.5):
 
         return mean, stddev
     except Exception as e:
-        print(f"Error in get_sample_stats: {e}")
-        return None, None
+        raise Exception("Error in get_sample_stats: {}".format(e))
+
+
+def compute_clahe_params(stddev, clip_limit_range, height, width, tile_grid_size_range):
+    clip_limit = min(max(stddev / 10.0, clip_limit_range[0]), clip_limit_range[1])
+    tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]),
+                         tile_grid_size_range[1])
+    return cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
+
+
+def should_recalculate_clahe(mean, stddev, prev_mean, prev_stddev, clahe_threshold):
+    return abs(mean - prev_mean) >= clahe_threshold or abs(stddev - prev_stddev) >= clahe_threshold
 
 
 def adjust_clahe_params(self, image, clip_limit_range=(1.0, 10.0), tile_grid_size_range=(2, 10)):
     try:
         mean, stddev = get_sample_stats(image, sample_fraction=0.5)
+        height, width = image.shape
+        clahe = None
 
-        # 以下のコードは、平均値と標準偏差に基づいてCLAHEパラメータを設定するロジックを具現化し、
-        # コードの再利用のためにこれを関数にラップしています
-        def compute_clahe_params():
-            clip_limit = min(max(stddev / 10.0, clip_limit_range[0]), clip_limit_range[1])
-            height, width = image.shape
-            tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]),
-                                 tile_grid_size_range[1])
-            return cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
-
-        # 前の画像がないか、新しい画像が前の画像と大きく変化した場合は、CLAHEパラメータを再計算します
         if self.previous_img_stats is None:
-            clahe = compute_clahe_params()
+            clahe = compute_clahe_params(stddev, clip_limit_range, height, width, tile_grid_size_range)
         else:
             prev_mean, prev_stddev = self.previous_img_stats
-            if abs(mean - prev_mean) >= self.clahe_threshold or abs(stddev - prev_stddev) >= self.clahe_threshold:
-                clahe = compute_clahe_params()
+            if should_recalculate_clahe(mean, stddev, prev_mean, prev_stddev, self.clahe_threshold):
+                clahe = compute_clahe_params(stddev, clip_limit_range, height, width, tile_grid_size_range)
             else:
                 clahe = self.previous_clahe
 
-        # 次の呼び出しのために現在の画像統計とclaheを保存する
         self.previous_img_stats = (mean, stddev)
         self.previous_clahe = clahe
 
-        clahe_image = clahe.apply(image)
-        # 強調された画像を返す
-        return clahe_image
+        return clahe.apply(image)
     except Exception as e:
         print(f"Error occurred while adjusting CLAHE parameters: {e}")
-        # Return the original image in case of error
         return image
 
 
@@ -124,36 +134,46 @@ def automatic_gaussian_blur(image):
         return image
 
 
-# Python code
+def load_font(font_path, font_size):
+    return ImageFont.truetype(font_path, font_size)
+
+
+def calculate_text_size(font, text):
+    text_bbox = font.getbbox(text)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+    return text_width, text_height
+
+
+def draw_background(draw, position, text_width, text_height, bg_color, padding):
+    x, y = position
+    rect_x1 = x - padding
+    rect_y1 = y - text_height - padding
+    rect_x2 = x + text_width + padding
+    rect_y2 = y + padding
+    draw.rectangle([rect_x1, rect_y1, rect_x2, rect_y2], fill=bg_color)
+
+
+def draw_text_on_draw(draw, position, text, font, text_color, text_height, padding):
+    x, y = position
+    draw.text((x, y - text_height - padding), text, font=font, fill=text_color)
+
+
 def draw_text(image, text, position, font_path='M_PLUS_1p/MPLUS1p-Regular.ttf', font_size=20,
               text_color=(0, 0, 255), bg_color=(255, 255, 255), padding=5):
     try:
-        img_pil = Image.fromarray(image)  # NumPy 配列を PIL 画像に変換
-        draw = ImageDraw.Draw(img_pil)  # 描画オブジェクトを作成
+        img_pil = Image.fromarray(image)
+        draw = ImageDraw.Draw(img_pil)
 
-        # フォントをロードし、テキストのサイズを計算
-        font = ImageFont.truetype(font_path, font_size)
-        text_bbox = font.getbbox(text)  # テキストの境界ボックスを取得
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        x, y = position
+        font = load_font(font_path, font_size)
+        text_width, text_height = calculate_text_size(font, text)
+        draw_background(draw, position, text_width, text_height, bg_color, padding)
+        draw_text_on_draw(draw, position, text, font, text_color, text_height, padding)
 
-        # 背景矩形の座標を定義
-        rect_x1 = x - padding
-        rect_y1 = y - text_height - padding
-        rect_x2 = x + text_width + padding
-        rect_y2 = y + padding
-
-        # 背景矩形を描画
-        draw.rectangle([rect_x1, rect_y1, rect_x2, rect_y2], fill=bg_color)
-
-        # テキストを描画
-        draw.text((x, y - text_height - padding), text, font=font, fill=text_color)
-
-        return np.array(img_pil)  # PIL 画像を NumPy 配列に戻す
+        return np.array(img_pil)
     except Exception as e:
-        print(f"エラーが発生しました: {e}")
-        return image  # エラーが発生した場合は元の画像を返す
+        print(f"Error occurred: {e}")
+        return image
 
 
 def calculate_image_iou(box1, box2):
@@ -174,7 +194,7 @@ def analyze_roi(gray):
     # Here I use Otsu's binarization method for thresholding.
     # ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                                   cv2.THRESH_BINARY_INV, 11, 2)
+                                   cv2.THRESH_BINARY_INV, 11, 1)
 
     # Draw contours around the defined ROIs
     contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -381,7 +401,7 @@ class App:
                                     if result is not None:
                                         similarity_score, calculate_word = result
                                     confidence = word_info[1][1]  # OCRの信頼度
-                                    if confidence > 0.85 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
+                                    if confidence >= 0.85 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
                                         rect_color = (0, 255, 0)  # 長方形の色
                                         coordinates = np.array(word_info[0]) / float(scale)  # 単語の座標
                                         x_min = coordinates[:, 0].min()  # 最小x座標
@@ -529,6 +549,10 @@ class App:
             if ret:  # フレームが正常に読み取られた場合
                 img_bgr = frame.view()
                 gray = cv2.cvtColor(frame.view(), cv2.COLOR_BGR2GRAY)  # BGR画像をグレースケールに変換
+
+                # gray = correct_lens_distortion(gray, np.array([[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1]]),
+                #                               np.array([0, 0, 0, 0]))
+
                 roi_image = analyze_roi(gray)
                 clahe_image = adjust_clahe_params(self, roi_image)
                 # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
@@ -584,7 +608,7 @@ class App:
                                     similarity_score, calculate_word = result
 
                                 confidence = word_info[1][1]  # OCRの信頼度
-                                if confidence > 0.80 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
+                                if confidence >= 0.80 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
                                     coordinates = np.array(word_info[0])  # 単語の座標
                                     x_min = int(coordinates[:, 0].min())  # 最小x座標
                                     y_min = int(coordinates[:, 1].min())  # 最小y座標
@@ -613,7 +637,7 @@ class App:
                             if keep[j] == 0:
                                 continue
                             _, box2, _, _ = all_results[j]
-                            if calculate_video_ciou(box1, box2) > 0.25:  # IOUが閾値を超えた場合
+                            if calculate_video_ciou(box1, box2) >= 0.40:  # IOUが閾値を超えた場合
                                 keep[j] = 0  # 結果を保持しない
 
                     for k, (word, box, _, rect_color) in enumerate(all_results):  # 結果を画像に描画
