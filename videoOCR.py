@@ -1,9 +1,14 @@
 import threading
 import tkinter as tk
 import numpy as np
+import spacy
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 import cv2
 from paddleocr import PaddleOCR
+import os
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+nlp = spacy.load('ja_core_news_sm')
 
 
 def draw_text(image, text, position):
@@ -113,6 +118,11 @@ class App:
         draw.text(position, text, font=font, fill=(0, 0, 255, 0))
         return np.array(img_pil)
 
+    def calculate_similarity(self, word1, word2):
+        token1 = nlp(word1)
+        token2 = nlp(word2)
+        return token1.similarity(token2)
+
     def update(self):
         if self.camera_open:
             ret, frame = self.vid.read()
@@ -130,6 +140,11 @@ class App:
                             for word_info in line:
                                 word = word_info[1][0]
                                 print(word)
+                                similarity_score = self.calculate_similarity(word, 'アルゴリズム')
+                                if similarity_score >= 0.8:
+                                    rect_color = (0, 255, 0)
+                                else:
+                                    rect_color = (0, 0, 255)
                                 ocr_result_en += word + '\n'
                                 confidence = word_info[1][1]
                                 if confidence > 0.8:
@@ -138,7 +153,8 @@ class App:
                                     y_min = int(min(pt[1] for pt in coordinates))
                                     x_max = int(max(pt[0] for pt in coordinates))
                                     y_max = int(max(pt[1] for pt in coordinates))
-                                    cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+                                    cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2
+                                                  )
                                     result_img = draw_text(result_img, word, (x_min, y_min - 5))
 
                     self.photo = ImageTk.PhotoImage(image=Image.fromarray(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)))
