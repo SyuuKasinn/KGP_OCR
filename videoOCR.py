@@ -1,82 +1,106 @@
+import tkinter as tk
+from PIL import Image, ImageTk
+import cv2
+from paddleocr import PaddleOCR
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import matplotlib.lines as mlines
-
-# Set up the figure
-fig, ax = plt.subplots(figsize=(12, 8))
-
-# Define colors
-colors = {
-    'master_db': '#FF9999',
-    'slave_db': '#FFCC99',
-    'backend': '#99CCFF',
-    'frontend': '#FFCCFF',
-    'reporting_server': '#FFFF99',
-    'search': '#CCFFCC',
-    'kubernetes': '#CCCCFF',
-}
-
-# Draw rectangles
-rects = {
-    'master_db': mpatches.Rectangle((0.1, 0.7), 0.1, 0.1, edgecolor='black', facecolor=colors['master_db'], label='Master DB (PostgreSQL)'),
-    'slave_db': mpatches.Rectangle((0.3, 0.7), 0.1, 0.1, edgecolor='black', facecolor=colors['slave_db'], label='Slave DB (PostgreSQL)'),
-    'backend1': mpatches.Rectangle((0.1, 0.5), 0.1, 0.1, edgecolor='black', facecolor=colors['backend'], label='Backend Server 1'),
-    'backend2': mpatches.Rectangle((0.3, 0.5), 0.1, 0.1, edgecolor='black', facecolor=colors['backend'], label='Backend Server 2'),
-    'frontend': mpatches.Rectangle((0.1, 0.3), 0.3, 0.1, edgecolor='black', facecolor=colors['frontend'], label='Frontend (React)'),
-    'reporting_server': mpatches.Rectangle((0.6, 0.7), 0.1, 0.1, edgecolor='black', facecolor=colors['reporting_server'], label='Reporting Server'),
-    'search': mpatches.Rectangle((0.6, 0.5), 0.1, 0.1, edgecolor='black', facecolor=colors['search'], label='Search (Redis)'),
-    'kubernetes': mpatches.Rectangle((0.55, 0.2), 0.2, 0.15, edgecolor='black', facecolor=colors['kubernetes'], label='Kubernetes'),
-}
-
-for rect in rects.values():
-    ax.add_patch(rect)
-
-# Draw arrows
-arrows = [
-    ((0.2, 0.75), (0.35, 0.75)),  # Master to Slave
-    ((0.15, 0.7), (0.15, 0.6)),  # Master to Backend 1
-    ((0.35, 0.7), (0.35, 0.6)),  # Slave to Backend 2
-    ((0.2, 0.5), (0.2, 0.4)),  # Backend 1 to Frontend
-    ((0.35, 0.5), (0.35, 0.4)),  # Backend 2 to Frontend
-    ((0.65, 0.7), (0.35, 0.7)),  # Reporting Server to Slave
-    ((0.65, 0.5), (0.35, 0.5)),  # Search to Backend 2
-    ((0.65, 0.55), (0.65, 0.35)),  # Search to Kubernetes
-    ((0.65, 0.75), (0.65, 0.35)),  # Reporting to Kubernetes
-]
-
-for start, end in arrows:
-    ax.add_line(mlines.Line2D(*zip(start, end), color='black', linewidth=1, marker='>', markersize=5))
-
-# Add texts
-texts = {
-    'master_db': (0.15, 0.75, 'Master DB\n(PostgreSQL)'),
-    'slave_db': (0.35, 0.75, 'Slave DB\n(PostgreSQL)'),
-    'backend1': (0.15, 0.55, 'Backend Server 1'),
-    'backend2': (0.35, 0.55, 'Backend Server 2'),
-    'frontend': (0.25, 0.35, 'Frontend\n(React)'),
-    'reporting_server': (0.65, 0.75, 'Reporting Server'),
-    'search': (0.65, 0.55, 'Search\n(Redis)'),
-    'kubernetes': (0.65, 0.25, 'Kubernetes'),
-}
-
-for key, (x, y, text) in texts.items():
-    ax.text(x, y, text, ha='center', va='center', fontsize=10, bbox=dict(facecolor='white', edgecolor='none', boxstyle='round,pad=0.5'))
-
-# Add title
-plt.title('System Architecture Diagram')
-
-# Add legend
-handles, labels = [], []
-for rect in rects.values():
-    handles.append(rect)
-    labels.append(rect.get_label())
-ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1))
 
 
-# Remove axes
-ax.set_xlim(0, 1)
-ax.set_ylim(0, 1)
-ax.axis('off')
+class App:
+    def __init__(self, window, window_title, video_source=0):
+        self.window = window
+        self.window.title(window_title)
+        self.video_source = video_source
+        self.vid = None
+        self.ocr_en = PaddleOCR(use_angle_cls=True, lang='en')
+        self.result_label = tk.Label(window)
+        self.result_label.pack()
+        self.camera_open = False
 
-# Show plot
-plt.show()
+        # Create buttons
+        self.buttons = {
+            "Open Camera": self.open_camera,
+            "Snapshot": self.take_snapshot,
+            "OCR": self.perform_ocr,
+            "Exit": self.close
+        }
+
+        for button_text, button_command in self.buttons.items():
+            tk.Button(window, text=button_text, width=20, command=button_command).pack()
+
+        self.canvas = tk.Canvas(self.window)
+        self.canvas.pack()
+
+        self.delay = 15
+        self.update()
+
+    def open_camera(self):
+        if not self.camera_open:
+            self.vid = cv2.VideoCapture(self.video_source)
+            if self.vid.isOpened():
+                self.camera_open = True
+                self.canvas.config(width=self.vid.get(cv2.CAP_PROP_FRAME_WIDTH),
+                                   height=self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    def take_snapshot(self):
+        if self.camera_open:
+            ret, frame = self.vid.read()
+            if ret:
+                self.img_bgr = frame.copy()
+                self.img_rgb = cv2.cvtColor(self.img_bgr, cv2.COLOR_BGR2RGB)
+                self.photo = ImageTk.PhotoImage(image=Image.fromarray(self.img_rgb))
+                self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
+
+                # Display the image in matplotlib
+                plt.figure("Snapshot")
+                plt.imshow(self.img_rgb)
+                plt.axis('off')
+                plt.show()
+
+    def perform_ocr(self):
+        if self.camera_open and self.img_bgr is not None:
+            self.img_gray = cv2.cvtColor(self.img_bgr, cv2.COLOR_BGR2GRAY)
+            cv2.imwrite('gray_paddle.jpg', self.img_gray)
+
+            result_en = self.ocr_en.ocr(self.img_bgr)
+            result_img = self.img_bgr.copy()
+
+            for line in result_en:
+                for word_info in line:
+                    word = word_info[1][0]
+                    coordinates = word_info[0]
+                    x_min = int(min(pt[0] for pt in coordinates))
+                    y_min = int(min(pt[1] for pt in coordinates))
+                    x_max = int(max(pt[0] for pt in coordinates))
+                    y_max = int(max(pt[1] for pt in coordinates))
+                    cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+                    cv2.putText(result_img, word, (x_min, y_min - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+            cv2.imwrite('Result_paddle.jpg', result_img)
+            plt.imshow(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
+            plt.axis('off')
+            plt.show()
+
+            # Extract recognized text
+            ocr_result_en = '\n'.join([word_info[1][0] for line in result_en for word_info in line])
+            self.result_label.config(text=ocr_result_en)
+
+    def close(self):
+        if self.vid and self.vid.isOpened():
+            self.vid.release()
+        self.window.quit()
+
+    def update(self):
+        if self.camera_open:
+            ret, frame = self.vid.read()
+            if ret:
+                img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                self.photo = ImageTk.PhotoImage(image=Image.fromarray(img_rgb))
+                self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
+
+        self.window.after(self.delay, self.update)
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = App(root, "Tkinter and OpenCV")
+    root.mainloop()
