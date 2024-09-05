@@ -31,6 +31,7 @@ class MultiLevelButtonSearchApp:
     def initialize_data(self):
         return {
             "カテゴリー": {
+                # "秩父": {"秩父の天然水": self.ocr_to_accepted_words['秩父の天然水']},
                 "ラミックス": {key: {key: self.ocr_to_accepted_words[key]} for key in [
                     "ラミックス", "ラミックス2", "ラミックス静岡", "ラミックス群馬",
                     "ラミックス湘南", "ラミックス厚木１", "ラミックス厚木２",
@@ -105,7 +106,8 @@ class MultiLevelButtonSearchApp:
             self.current_dict = self.current_dict[key]
             self.populate_buttons(self.current_dict)
         else:
-            self.result_label.config(text=f"{SELECTED_TEXT}{self.path[-1]}", font=('Arial', 14, 'bold'), fg='black')
+            self.result_label.config(text=f"{SELECTED_TEXT}{self.path[-1]}", font=('Arial', 14, 'bold'), fg='black',
+                                     background='#F5F5DC')
             self.update_callback(self.path[-1])
 
     def back(self):
