@@ -144,17 +144,17 @@ class App:
         self.video_source = video_source  # ビデオソースの設定
         self.vid = None  # ビデオキャプチャオブジェクトの初期化
         self.ocr_en = PaddleOCR(use_angle_cls=True, lang='japan')  # PaddleOCRの日本語モデルの設定
-        self.result_label = tk.Label(window, text="OCR Result")  # OCR結果を表示するラベルの作成
+        self.result_label = tk.Label(window, text="光学文字認識")  # OCR結果を表示するラベルの作成
         self.result_label.pack()  # ラベルをウィンドウに配置
         self.camera_open = False  # カメラのオープン状態の初期化
         self.thread_pool = ThreadPoolExecutor(max_workers=4)  # スレッドプールの設定
 
         # ボタンの設定と配置
         self.buttons = {
-            "Open Camera": self.open_camera,
-            "Snapshot": self.take_snapshot,
+            "カメラ": self.open_camera,
+            "スナップショット": self.take_snapshot,
             "OCR": self.perform_ocr,
-            "Exit": self.close
+            "終了": self.close
         }
 
         self.button_widgets = {}
@@ -162,7 +162,7 @@ class App:
             btn = tk.Button(window, text=name, width=20, height=2, command=action)
             btn.pack()
             self.button_widgets[name] = btn
-        self.button_widgets["Snapshot"].config(state='disabled')
+        self.button_widgets["スナップショット"].config(state='disabled')
         self.button_widgets["OCR"].config(state='disabled')
         #
         # for button_text, button_command in self.buttons.items():
@@ -189,7 +189,7 @@ class App:
                 self.camera_open = True  # カメラがオープンした状態に設定
                 self.canvas.config(width=self.vid.get(cv2.CAP_PROP_FRAME_WIDTH),
                                    height=self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT))  # キャンバスのサイズをビデオフレームのサイズに設定
-                self.button_widgets["Snapshot"].config(state='normal')
+                self.button_widgets["スナップショット"].config(state='normal')
 
     def take_snapshot(self):
         if self.camera_open:  # カメラがオープンしている場合
@@ -209,7 +209,7 @@ class App:
     def perform_ocr(self):
         if self.camera_open and hasattr(self, 'img_bgr'):  # カメラがオープンしており、画像が存在する場合
             self.thread_pool.submit(self._perform_ocr)  # OCR処理をスレッドプールで実行
-            self.button_widgets["Snapshot"].config(state='disabled')
+            self.button_widgets["スナップショット"].config(state='disabled')
 
     def _perform_ocr(self):
         if self.camera_open and hasattr(self, 'img_bgr'):  # カメラがオープンしており、画像が存在する場合
@@ -296,6 +296,23 @@ class App:
                     cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2)  # 長方形を描画
                     result_img = draw_text(result_img, word, (x_min, y_min - 5))  # テキストを描画
 
+            detected_objects = any(keep)
+
+            height, width, _ = result_img.shape
+            if detected_objects:
+
+                center = (width - 50, height - 50)
+                radius = 40
+                cv2.circle(result_img, center, radius, (0, 255, 0), thickness=3)
+            else:
+
+                pt1 = (width - 60, height - 60)
+                pt2 = (width - 20, height - 20)
+                cv2.line(result_img, pt1, pt2, (0, 0, 255), thickness=3)
+                pt1 = (width - 20, height - 60)
+                pt2 = (width - 60, height - 20)
+                cv2.line(result_img, pt1, pt2, (0, 0, 255), thickness=3)
+
             cv2.imwrite('Result_paddle.jpg', result_img)  # 結果画像をファイルに保存
 
             import matplotlib.pyplot as plt  # matplotlibのインポート
@@ -313,7 +330,7 @@ class App:
                     print(f"An error occurred when displaying the image: {e}")
             plt.axis('off')  # 軸を非表示に設定
             plt.show()  # 画像の表示
-            self.button_widgets["Snapshot"].config(state='normal')
+            self.button_widgets["スナップショット"].config(state='normal')
             self.button_widgets["OCR"].config(state='disabled')
 
             # ocr_result_en = '\n'.join([word_info[1][0] for line in result_en for word_info in line])  # OCR結果の連結（コメントアウトされている）
@@ -406,7 +423,7 @@ class App:
                         if line is not None:
                             for word_info in line:  # 各単語に対して処理
                                 word = word_info[1][0]  # 単語の取得
-                                print(word)
+                                # print(word)
                                 similarity_score = 0
                                 calculate_word = None
                                 result = self.combined_similarity(word)  # 単語の類似度計算
