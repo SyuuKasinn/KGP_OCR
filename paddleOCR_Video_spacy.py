@@ -64,13 +64,29 @@ def automatic_gaussian_blur(image):
     return blurred
 
 
-def draw_text(image, text, position):
-    img_pil = Image.fromarray(image)  # NumPy配列からPIL画像に変換
-    draw = ImageDraw.Draw(img_pil)  # 描画オブジェクトの作成
-    font_path = 'M_PLUS_1p/MPLUS1p-Regular.ttf'  # フォントファイルのパス
-    font = ImageFont.truetype(font_path, 20)  # フォントの設定
-    draw.text(position, text, font=font, fill=(0, 0, 255, 0))  # 画像にテキストを描画
-    return np.array(img_pil)  # PIL画像をNumPy配列に変換して返す
+# Python code
+def draw_text(image, text, position, font_path='M_PLUS_1p/MPLUS1p-Regular.ttf', font_size=20, text_color=(0, 0, 255),
+              bg_color=(255, 255, 255), padding=5):
+    try:
+        img_pil = Image.fromarray(image)  # Convert NumPy array to PIL image
+        draw = ImageDraw.Draw(img_pil)  # Create a drawing object
+
+        # Load font and calculate text size
+        font = ImageFont.truetype(font_path, font_size)
+        text_bbox = font.getbbox(text)  # Modified line
+        text_width, text_height = text_bbox[2], text_bbox[3]  # Updated line to use dimensions from getbbox
+        x, y = position
+
+        # Draw background rectangle
+        draw.rectangle([x - padding, y - text_height - padding, x + text_width + padding, y + padding], fill=bg_color)
+
+        # Draw text
+        draw.text((x, y - text_height - padding), text, font=font, fill=text_color)
+
+        return np.array(img_pil)  # Convert PIL image back to NumPy array
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return image  # Return the original image if an error occurs
 
 
 def calculate_image_iou(box1, box2):
@@ -483,7 +499,7 @@ class App:
                         if keep[k] == 1:
                             x_min, y_min, x_max, y_max = box  # 座標を取得
                             cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2)  # 長方形を描画
-                            result_img = draw_text(result_img, word, (x_min, y_min - 5))  # テキストを描画
+                            result_img = draw_text(result_img, word, (x_min, y_min - 10))  # テキストを描画
 
                     detected_objects = any(keep)
 
