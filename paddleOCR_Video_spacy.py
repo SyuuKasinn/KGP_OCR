@@ -4,6 +4,7 @@ import tkinter as tk
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 import matplotlib.pyplot as plt
+from fuzzywuzzy import fuzz
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import spacy
@@ -14,8 +15,10 @@ import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 nlp = spacy.load('ja_core_news_lg')
-
-accepted_words = {'秩父の天然水', '父の天然水', '稚父の天然水', '种父の天然水'}
+ocr_to_accepted_words = {
+    "秩父の天然水": {'秩父の天然水', '父の天然水', '稚父の天然水', '种父の天然水', '地父の天然水', '稚父の天然木',
+                     '地父の天然木', '秩父の天然'}
+}
 
 
 def automatic_gaussian_blur(image):
@@ -107,8 +110,9 @@ class App:
         if self.camera_open and hasattr(self, 'img_bgr'):
             self.img_gray = cv2.cvtColor(self.img_bgr, cv2.COLOR_BGR2GRAY)
             cv2.imwrite('gray_paddle.jpg', self.img_gray)
-
-            blurred = automatic_gaussian_blur(self.img_gray)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            cl1 = clahe.apply(self.img_gray)
+            blurred = automatic_gaussian_blur(cl1)
             edged = cv2.Canny(blurred, 30, 150)
             contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             image_with_contours = cv2.drawContours(self.img_gray.copy(), contours, -1, (0, 255, 0), 2)
@@ -135,14 +139,14 @@ class App:
                                     x_max = float(max(pt[0] for pt in coordinates)) / scale
                                     y_max = float(max(pt[1] for pt in coordinates)) / scale
                                     all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
-                                else:
-                                    rect_color = (0, 0, 255)
-                                    coordinates = word_info[0]
-                                    x_min = float(min(pt[0] for pt in coordinates)) / scale
-                                    y_min = float(min(pt[1] for pt in coordinates)) / scale
-                                    x_max = float(max(pt[0] for pt in coordinates)) / scale
-                                    y_max = float(max(pt[1] for pt in coordinates)) / scale
-                                    all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
+                                # else:
+                                #     rect_color = (0, 0, 255)
+                                #     coordinates = word_info[0]
+                                #     x_min = float(min(pt[0] for pt in coordinates)) / scale
+                                #     y_min = float(min(pt[1] for pt in coordinates)) / scale
+                                #     x_max = float(max(pt[0] for pt in coordinates)) / scale
+                                #     y_max = float(max(pt[1] for pt in coordinates)) / scale
+                                #     all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
 
             all_results.sort(key=lambda x: -x[2])
 
@@ -170,7 +174,8 @@ class App:
 
             import matplotlib.pyplot as plt
             plt.figure("Result")
-            plt.imshow(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
+            if result_img is not None:
+                plt.imshow(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
             plt.axis('off')
             plt.show()
 
@@ -191,13 +196,18 @@ class App:
         return np.array(img_pil)
 
     def calculate_similarity(self, word):
-        if word in accepted_words:
-            return 1.0
+        for accepted_word, possible_words in ocr_to_accepted_words.items():
+            if word in possible_words:
+                return 1.0
         max_sim = 0
-        for accepted_word in accepted_words:
+        for accepted_word in ocr_to_accepted_words.keys():
             token1 = nlp(word)
             token2 = nlp(accepted_word)
-            sim = token1.similarity(token2)
+            spacy_sim = token1.similarity(token2)
+
+            fuzzy_sim = fuzz.ratio(word.lower(), accepted_word.lower()) / 100.0
+            sim = max(spacy_sim, fuzzy_sim)
+
             if sim > max_sim:
                 max_sim = sim
         return max_sim
@@ -214,7 +224,9 @@ class App:
                 img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                blurred = automatic_gaussian_blur(gray)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                cl1 = clahe.apply(gray)
+                blurred = automatic_gaussian_blur(cl1)
                 edged = cv2.Canny(blurred, 30, 150)
                 contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 image_with_contours = cv2.drawContours(gray.copy(), contours, -1, (0, 255, 0), 2)
@@ -241,14 +253,14 @@ class App:
                                     y_max = int(max(pt[1] for pt in coordinates))
                                     rect_color = (0, 255, 0)
                                     all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
-                                else:
-                                    rect_color = (0, 0, 255)
-                                    coordinates = word_info[0]
-                                    x_min = int(min(pt[0] for pt in coordinates))
-                                    y_min = int(min(pt[1] for pt in coordinates))
-                                    x_max = int(max(pt[0] for pt in coordinates))
-                                    y_max = int(max(pt[1] for pt in coordinates))
-                                    all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
+                                # else:
+                                #     rect_color = (0, 0, 255)
+                                #     coordinates = word_info[0]
+                                #     x_min = int(min(pt[0] for pt in coordinates))
+                                #     y_min = int(min(pt[1] for pt in coordinates))
+                                #     x_max = int(max(pt[0] for pt in coordinates))
+                                #     y_max = int(max(pt[1] for pt in coordinates))
+                                #     all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
 
                     # Apply Non-Maximum Suppression (NMS) based on IOU
                     keep = [1] * len(all_results)
