@@ -90,12 +90,13 @@ def draw_text(image, text, position, font_path='M_PLUS_1p/MPLUS1p-Regular.ttf', 
 
 
 def calculate_image_iou(box1, box2):
-    xi1, yi1, xi2, yi2 = max(box1[0], box2[0]), max(box1[1], box2[1]), min(box1[2], box2[2]), min(box1[3], box2[
-        3])  # IOUの計算のための座標の計算
-    inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)  # 交差部分の面積の計算
-    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])  # ボックス1の面積の計算
-    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])  # ボックス2の面積の計算
-    union_area = box1_area + box2_area - inter_area  # 結合部分の面積の計算
+    xi1, yi1, xi2, yi2 = np.maximum(box1[0], box2[0]), np.maximum(box1[1], box2[1]), np.minimum(box1[2],
+                                                                                                box2[2]), np.minimum(
+        box1[3], box2[3])
+    inter_area = np.maximum(0, xi2 - xi1) * np.maximum(0, yi2 - yi1)  # 交差部分の面積を計算
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])  # ボックス1の面積を計算
+    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])  # ボックス2の面積を計算
+    union_area = box1_area + box2_area - inter_area  # 結合部分の面積を計算
     return inter_area / union_area  # IOUを返す
 
 
@@ -107,14 +108,14 @@ def calculate_video_ciou(box1, box2):
     x1, y1, x2, y2 = box1
     x1_, y1_, x2_, y2_ = box2
 
-    # 交差領域の座標を計算します
-    xi1 = max(x1, x1_)
-    yi1 = max(y1, y1_)
-    xi2 = min(x2, x2_)
-    yi2 = min(y2, y2_)
+    # 交差する座標を計算します
+    xi1 = np.maximum(x1, x1_)
+    yi1 = np.maximum(y1, y1_)
+    xi2 = np.minimum(x2, x2_)
+    yi2 = np.minimum(y2, y2_)
 
-    # 交差領域の面積を計算します
-    inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+    # 交差する領域の面積を計算します
+    inter_area = np.maximum(0, xi2 - xi1) * np.maximum(0, yi2 - yi1)
 
     # 各ボックスの面積を計算します
     box1_area = (x2 - x1) * (y2 - y1)
@@ -126,27 +127,27 @@ def calculate_video_ciou(box1, box2):
     # IoU (Intersection over Union) を計算します
     iou = inter_area / union_area if union_area != 0 else 0
 
-    # 最小外接矩形の座標を計算します
-    min_x = min(x1, x1_)
-    min_y = min(y1, y1_)
-    max_x = max(x2, x2_)
-    max_y = max(y2, y2_)
+    # 最小の外接矩形の座標を計算します
+    min_x = np.minimum(x1, x1_)
+    min_y = np.minimum(y1, y1_)
+    max_x = np.maximum(x2, x2_)
+    max_y = np.maximum(y2, y2_)
 
-    # 最小外接矩形の面積を計算します
+    # 最小の外接矩形の面積を計算します
     c_area = (max_x - min_x) * (max_y - min_y)
 
     # GIoU (Generalized Intersection over Union) を計算します
     giou = iou - (c_area - union_area) / c_area if c_area != 0 else iou - 1
 
-    # 中心点の距離を計算します
+    # 中心の距離を計算します
     center1 = np.array([(x1 + x2) / 2, (y1 + y2) / 2])
     center2 = np.array([(x1_ + x2_) / 2, (y1_ + y2_) / 2])
     center_dist = np.linalg.norm(center1 - center2)
 
-    # 最小外接矩形の対角線の長さを計算します
+    # 最小の外接矩形の対角線の長さを計算します
     diag_length = np.linalg.norm([max_x - min_x, max_y - min_y])
 
-    # 長さと幅の比率を計算します
+    # アスペクト比を計算します
     w1, h1 = x2 - x1, y2 - y1
     w2, h2 = x2_ - x1_, y2_ - y1_
     aspect_ratio1 = w1 / h1 if h1 != 0 else 0
@@ -154,8 +155,8 @@ def calculate_video_ciou(box1, box2):
     aspect_ratio_dist = (aspect_ratio1 - aspect_ratio2) ** 2
 
     # CIoU (Complete Intersection over Union) を計算します
-    alpha = aspect_ratio_dist / (1 - iou + 1e-10)  # ゼロ除算を避けるために小さな定数を追加
-    ciou = giou - (center_dist / (diag_length + 1e-10)) - alpha  # ゼロ除算を避けるために小さな定数を追加
+    alpha = aspect_ratio_dist / (1 - iou + 1e-10)  # ゼロ除算を避けるために小さな定数を追加します
+    ciou = giou - (center_dist / (diag_length + 1e-10)) - alpha  # ゼロ除算を避けるために小さな定数を追加します
 
     return ciou
 
@@ -194,7 +195,7 @@ class App:
         self.canvas = tk.Canvas(self.window, width=640, height=480)  # 画像を表示するためのキャンバスの作成
         self.canvas.pack()  # キャンバスをウィンドウに配置
 
-        self.delay = 35  # 更新の遅延時間の設定
+        self.delay = 50  # 更新の遅延時間の設定
         self.update()  # 初回の更新呼び出し
         self.ocr_label = {}
 
@@ -252,11 +253,17 @@ class App:
             sobel_y = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=5)  # Sobelフィルタ（y方向）の適用
             sobel_edges = cv2.magnitude(sobel_x, sobel_y)  # Sobelエッジの計算
             sobel_edges = cv2.convertScaleAbs(sobel_edges)  # 絶対値の変換
+
+            laplacian = cv2.Laplacian(blurred, cv2.CV_64F)
+            laplacian_edges = cv2.convertScaleAbs(laplacian)
+
             edged = np.maximum(canny_edges, sobel_edges)  # CannyエッジとSobelエッジの最大値を計算
+            edged = np.maximum(edged, laplacian_edges)
+
             contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # 輪郭の検出
             image_with_contours = cv2.drawContours(self.img_gray.copy(), contours, -1, (0, 255, 0), 2)  # 輪郭を画像に描画
 
-            scales = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0]  # スケールのリスト
+            scales = [0.5, 0.75, 1.0, 1.25, 1.5]  # スケールのリスト
             all_results = []  # OCR結果を格納するリスト
 
             for scale in scales:  # 各スケールに対して処理
@@ -279,11 +286,11 @@ class App:
                                     confidence = word_info[1][1]  # OCRの信頼度
                                     if confidence > 0.85 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
                                         rect_color = (0, 255, 0)  # 長方形の色
-                                        coordinates = word_info[0]  # 単語の座標
-                                        x_min = float(min(pt[0] for pt in coordinates)) / scale  # 最小x座標
-                                        y_min = float(min(pt[1] for pt in coordinates)) / scale  # 最小y座標
-                                        x_max = float(max(pt[0] for pt in coordinates)) / scale  # 最大x座標
-                                        y_max = float(max(pt[1] for pt in coordinates)) / scale  # 最大y座標
+                                        coordinates = np.array(word_info[0]) / float(scale)  # 単語の座標
+                                        x_min = coordinates[:, 0].min()  # 最小x座標
+                                        y_min = coordinates[:, 1].min()  # 最小y座標
+                                        x_max = coordinates[:, 0].max()  # 最大x座標
+                                        y_max = coordinates[:, 1].max()  # 最大y座標
 
                                         word = calculate_word
                                         all_results.append(
@@ -439,13 +446,23 @@ class App:
                 sobel_y = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=5)  # Sobelフィルタ（y方向）の適用
                 sobel_edges = cv2.magnitude(sobel_x, sobel_y)  # Sobelエッジの計算
                 sobel_edges = cv2.convertScaleAbs(sobel_edges)  # 絶対値の変換
+
+                laplacian = cv2.Laplacian(blurred, cv2.CV_64F)
+                laplacian_edges = cv2.convertScaleAbs(laplacian)
+
                 edged = np.maximum(canny_edges, sobel_edges)  # CannyエッジとSobelエッジの最大値を計算
+                edged = np.maximum(edged, laplacian_edges)
+
                 contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # 輪郭の検出
                 image_with_contours = cv2.drawContours(gray.copy(), contours, -1, (0, 255, 0), 2)  # 輪郭を画像に描画
 
                 with ThreadPoolExecutor() as executor:  # スレッドプールの作成
-                    future = executor.submit(self.process_ocr, image_with_contours)  # OCR処理をスレッドプールで実行
-                    result_en = future.result()  # 結果の取得
+                    try:
+                        future = executor.submit(self.process_ocr, image_with_contours)  # OCR処理をスレッドプールで実行
+                        result_en = future.result()  # 結果の取得
+                    except Exception as e:
+                        print(f"OCR process failed with error: {e}")
+                        result_en = None  # or set a reasonable default value
 
                 result_img = img_bgr.copy()  # 結果画像のコピー
 
@@ -464,11 +481,11 @@ class App:
 
                                 confidence = word_info[1][1]  # OCRの信頼度
                                 if confidence > 0.85 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
-                                    coordinates = word_info[0]  # 単語の座標
-                                    x_min = int(min(pt[0] for pt in coordinates))  # 最小x座標
-                                    y_min = int(min(pt[1] for pt in coordinates))  # 最小y座標
-                                    x_max = int(max(pt[0] for pt in coordinates))  # 最大x座標
-                                    y_max = int(max(pt[1] for pt in coordinates))  # 最大y座標
+                                    coordinates = np.array(word_info[0])  # 単語の座標
+                                    x_min = int(coordinates[:, 0].min())  # 最小x座標
+                                    y_min = int(coordinates[:, 1].min())  # 最小y座標
+                                    x_max = int(coordinates[:, 0].max())  # 最大x座標
+                                    y_max = int(coordinates[:, 1].max())  # 最大y座標
                                     rect_color = (0, 255, 0)  # 長方形の色
                                     word = calculate_word
                                     all_results.append(
