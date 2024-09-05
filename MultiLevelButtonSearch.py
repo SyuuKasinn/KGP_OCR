@@ -105,7 +105,7 @@ class MultiLevelButtonSearchApp:
             self.current_dict = self.current_dict[key]
             self.populate_buttons(self.current_dict)
         else:
-            self.result_label.config(text=f"{SELECTED_TEXT}{self.path[-1]}")
+            self.result_label.config(text=f"{SELECTED_TEXT}{self.path[-1]}", font=('Arial', 14, 'bold'), fg='black')
             self.update_callback(self.path[-1])
 
     def back(self):
