@@ -1,65 +1,46 @@
 import tkinter as tk
-from acceptedWords import ocr_to_accepted_words
+from tkinter import ttk
+from tkinter import font as tkfont
+from paddleOCR_Video_spacy_20240802_04 import App
+from buttonDemo20240802 import MultiLevelButtonSearchApp
 
-class MultiLevelButtonSearchApp:
+
+class MainApp:
     def __init__(self, root):
         self.root = root
-        #self.root.title("多级按钮点击式搜索系统")
+        customFont = tkfont.Font(family="Helvetica", size=12)  # Customize font
 
-        self.ocr_to_accepted_words =ocr_to_accepted_words
+        # Using ttkthemes
+        # self.root = ttkthemes.ThemedTk()  # Uncomment if using ttkthemes
+        # self.root.get_themes()
+        # self.root.set_theme("plastik")  # Uncomment and change to your liking if using ttkthemes
 
-        self.data = {
-            "Foods": {
-                "Fruits": {
-                    "Citrus": {"Orange": None, "Lemon": None},
-                    "Non-Citrus": {"Apple": None, "Banana": None},
-                    "秩父": self.ocr_to_accepted_words
-                },
-                "Vegetables": {"Carrot": None, "Broccoli": None}
-            }
-        }
+        self.root.title("Combined GUI Application")
 
-        self.current_dict = self.data
-        self.path = []
+        self.main_frame = tk.Frame(self.root)
 
-        # Frame for buttons
-        self.button_frame = tk.Frame(self.root)
-        self.button_frame.pack(pady=10, padx=10)
+        self.main_frame.pack(fill=tk.BOTH,
+                             expand=True,
+                             padx=10,
+                             pady=10)
 
-        self.result_label = tk.Label(self.root, text="", font=('Arial', 14))
-        self.result_label.pack(pady=10)
+        # Create and place App1 and App2 frames
+        self.app1_frame = tk.Frame(self.main_frame,
+                                   bd=5,
+                                   relief=tk.SUNKEN)  # Change border, color
 
-        # Populate category buttons
-        self.populate_buttons(self.data)
+        self.app1 = App(self.app1_frame, "Title for App1")
+        self.app1_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)  # Add padding
 
-    def populate_buttons(self, dictionary):
-        for widget in self.button_frame.winfo_children():
-            widget.destroy()
+        self.app2_frame = tk.Frame(self.main_frame,
+                                   bd=5,
+                                   relief=tk.SUNKEN)  # Change border, color
 
-        for key in dictionary.keys():
-            button = tk.Button(self.button_frame, text=key, command=lambda k=key: self.process_click(k))
-            button.pack(side=tk.LEFT, padx=5, pady=5)
-
-    def process_click(self, key):
-        self.path.append(key)
-        if isinstance(self.current_dict[key], dict):
-            # If the clicked item is a dictionary, make it the current dictionary
-            # and create new buttons
-            self.current_dict = self.current_dict[key]
-            self.populate_buttons(self.current_dict)
-        elif isinstance(self.current_dict[key], set):
-            # If the clicked item is a set, it is a final item.
-            # Show the selected item (the last item in the path)
-            self.result_label.config(text=f"您选择了: {self.path[-1]}")
-            # Optionally, if you want to show all the keys under that item, you can uncomment the following line
-            # self.result_label.config(text=f"您选择了: {self.path[-1]} | Keys: {', '.join(self.current_dict[key])}")
-        else:
-            # This is not expected to happen with the current structure of data,
-            # but if it does, we can just display the last item in the path
-            self.result_label.config(text=f"您选择了: {self.path[-1]}")
+        self.app2 = MultiLevelButtonSearchApp(self.app2_frame)
+        self.app2_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)  # Add padding
 
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = MultiLevelButtonSearchApp(root)
+    app = MainApp(root)
     root.mainloop()
