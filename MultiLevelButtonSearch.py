@@ -10,14 +10,44 @@ class MultiLevelButtonSearchApp:
         self.ocr_to_accepted_words = ocr_to_accepted_words
 
         self.data = {
-            "Foods": {
-                "Fruits": {
-                    "Citrus": {"Orange": None, "Lemon": None},
-                    "Non-Citrus": {"Apple": None, "Banana": None},
-                    "秩父": {'秩父の天然水': self.ocr_to_accepted_words['秩父の天然水']},
-                    "森の": {'森のひとしすく': self.ocr_to_accepted_words['森のひとしすく']}
+            "カテゴリー": {
+                "ラミックス": {
+                    "ラミックス": {'ラミックス': self.ocr_to_accepted_words['ラミックス']},
+                    "ラミックス2": {'ラミックス2': self.ocr_to_accepted_words['ラミックス2']},
+                    "ラミックス静岡": {'ラミックス静岡': self.ocr_to_accepted_words['ラミックス静岡']},
+                    "ラミックス群馬": {'ラミックス群馬': self.ocr_to_accepted_words['ラミックス群馬']},
+                    "ラミックス湘南": {'ラミックス湘南': self.ocr_to_accepted_words['ラミックス湘南']},
+                    "ラミックス厚木１": {'ラミックス厚木１': self.ocr_to_accepted_words['ラミックス厚木１']},
+                    "ラミックス厚木２": {'ラミックス厚木２': self.ocr_to_accepted_words['ラミックス厚木２']},
+                    "ラミックス横浜２": {'ラミックス横浜２': self.ocr_to_accepted_words['ラミックス横浜２']},
+                    "ラミックス川崎": {'ラミックス川崎': self.ocr_to_accepted_words['ラミックス川崎']},
+
                 },
-                "Vegetables": {"Carrot": None, "Broccoli": None}
+                "アブロード": {
+                    "アブロード横浜": {'アブロード横浜': self.ocr_to_accepted_words['アブロード横浜']},
+                    "アブロード杉並府中": {'アブロード杉並府中': self.ocr_to_accepted_words['アブロード杉並府中']},
+                    "アブロード銀座": {'アブロード銀座': self.ocr_to_accepted_words['アブロード銀座']},
+                    "アブロード多摩": {'アブロード多摩': self.ocr_to_accepted_words['アブロード多摩']},
+                    "アブロード北東京": {'アブロード北東京': self.ocr_to_accepted_words['アブロード北東京']},
+                    "アブロード新宿": {'アブロード新宿': self.ocr_to_accepted_words['アブロード新宿']},
+                    "アブロード戸田": {'アブロード戸田': self.ocr_to_accepted_words['アブロード戸田']},
+                    "アブロード北東京新宿": {
+                        'アブロード北東京新宿': self.ocr_to_accepted_words['アブロード北東京新宿']},
+                    "アブロード千葉": {'アブロード千葉': self.ocr_to_accepted_words['アブロード千葉']},
+                },
+                "ムロオ": {
+                    "ムロオ共配": {'ムロオ共配': self.ocr_to_accepted_words['ムロオ共配']},
+                    "ムロオ北東京２": {'ムロオ北東京２': self.ocr_to_accepted_words['ムロオ北東京２']},
+                },
+                "柏倉庫(引取り)": {
+                    "柏倉庫(引取り)": {'柏倉庫(引取り)': self.ocr_to_accepted_words['柏倉庫(引取り)']},
+                },
+                "来　社": {
+                    "来　社": {'来　社': self.ocr_to_accepted_words['来　社']},
+                },
+                "西濃": {
+                    "西濃": {'西濃': self.ocr_to_accepted_words['西濃']},
+                }
             }
         }
 
@@ -40,6 +70,10 @@ class MultiLevelButtonSearchApp:
     def populate_buttons(self, dictionary):
         for widget in self.button_frame.winfo_children():
             widget.destroy()
+
+        if self.path:
+            back_button = tk.Button(self.button_frame, text="戻る", bg="red", fg="white", command=self.back)
+            back_button.pack(side=tk.LEFT, padx=20, pady=20)
 
         for key in dictionary.keys():
             button = tk.Button(self.button_frame, text=key, command=lambda k=key: self.process_click(k))
@@ -66,6 +100,16 @@ class MultiLevelButtonSearchApp:
             self.result_label.config(text=f"あなたが選んだ: {self.path[-1]}")
             self.ocr_label = self.path[-1]
             self.update_callback(self.ocr_label)
+
+    def back(self):
+        # Get rid of the current level's name
+        self.path.pop()
+        # Go back to parent level dictionary
+        self.current_dict = self.data
+        for key in self.path:
+            self.current_dict = self.current_dict[key]
+
+        self.populate_buttons(self.current_dict)
 
 
 if __name__ == "__main__":
