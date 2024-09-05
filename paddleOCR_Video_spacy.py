@@ -82,24 +82,37 @@ class App:
             self.img_gray = cv2.cvtColor(self.img_bgr, cv2.COLOR_BGR2GRAY)
             cv2.imwrite('gray_paddle.jpg', self.img_gray)
 
-            result_en = self.ocr_en.ocr(self.img_bgr)
+            blurred = cv2.GaussianBlur(self.img_gray, (5, 5), 0)
+            result_en = self.ocr_en.ocr(blurred.copy())
             result_img = self.img_bgr.copy()
 
             if result_en is not None:
                 for line in result_en:
                     for word_info in line:
                         word = word_info[1][0]
+                        similarity_score = self.calculate_similarity(word, '秩父の天然水')
+                        if similarity_score >= 0.85:
+                            rect_color = (0, 255, 0)
+                        else:
+                            rect_color = (0, 0, 255)
                         confidence = word_info[1][1]
-                        if confidence > 0.8:
+                        if confidence > 0.85:
                             coordinates = word_info[0]
                             x_min = int(min(pt[0] for pt in coordinates))
                             y_min = int(min(pt[1] for pt in coordinates))
                             x_max = int(max(pt[0] for pt in coordinates))
                             y_max = int(max(pt[1] for pt in coordinates))
-                            cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+                            cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2
+                                          )
                             result_img = draw_text(result_img, word, (x_min, y_min - 5))
 
                 cv2.imwrite('Result_paddle.jpg', result_img)
+
+                import matplotlib.pyplot as plt
+                plt.figure("Snapshot")
+                plt.imshow(result_img)
+                plt.axis('off')
+                plt.show()
 
                 # Extract recognized text
                 ocr_result_en = '\n'.join([word_info[1][0] for line in result_en for word_info in line])
@@ -130,7 +143,9 @@ class App:
                 img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
-                result_en = self.ocr_en.ocr(img_bgr)
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+                result_en = self.ocr_en.ocr(blurred.copy())
                 result_img = img_bgr.copy()
 
                 if result_en is not None:
@@ -140,14 +155,14 @@ class App:
                             for word_info in line:
                                 word = word_info[1][0]
                                 print(word)
-                                similarity_score = self.calculate_similarity(word, 'アルゴリズム')
-                                if similarity_score >= 0.8:
+                                similarity_score = self.calculate_similarity(word, '秩父の天然水')
+                                if similarity_score >= 0.85:
                                     rect_color = (0, 255, 0)
                                 else:
                                     rect_color = (0, 0, 255)
                                 ocr_result_en += word + '\n'
                                 confidence = word_info[1][1]
-                                if confidence > 0.8:
+                                if confidence > 0.85:
                                     coordinates = word_info[0]
                                     x_min = int(min(pt[0] for pt in coordinates))
                                     y_min = int(min(pt[1] for pt in coordinates))
