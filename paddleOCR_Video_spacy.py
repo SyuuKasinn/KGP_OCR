@@ -1,5 +1,8 @@
+import math
 import threading
 import tkinter as tk
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import spacy
 from PIL import Image, ImageTk, ImageDraw, ImageFont
@@ -8,7 +11,19 @@ from paddleocr import PaddleOCR
 import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-nlp = spacy.load('ja_core_news_sm')
+nlp = spacy.load('ja_core_news_lg')
+
+accepted_words = {'秩父の天然水', '父の天然水', '稚父の天然水', '种父の天然水'}
+
+
+def automatic_gaussian_blur(image):
+    if len(image.shape) == 2:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    kernel_size = math.floor(gray.shape[1] / 20)
+    kernel_size = kernel_size if kernel_size % 2 == 1 else kernel_size + 1
+    blurred = cv2.GaussianBlur(gray, (kernel_size, kernel_size), 0)
+    return blurred
 
 
 def draw_text(image, text, position):
@@ -30,8 +45,8 @@ class App:
         self.result_label = tk.Label(window, text="OCR Result")
         self.result_label.pack()
         self.camera_open = False
+        self.thread_pool = ThreadPoolExecutor(max_workers=4)
 
-        # Create buttons
         self.buttons = {
             "Open Camera": self.open_camera,
             "Snapshot": self.take_snapshot,
@@ -45,7 +60,7 @@ class App:
         self.canvas = tk.Canvas(self.window, width=640, height=480)
         self.canvas.pack()
 
-        self.delay = 50  # Adjusted delay for lower fps
+        self.delay = 50
         self.update()
 
     def open_camera(self):
@@ -65,7 +80,6 @@ class App:
                 self.photo = ImageTk.PhotoImage(image=Image.fromarray(self.img_rgb))
                 self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
 
-                # Display the image in matplotlib for snapshot only
                 import matplotlib.pyplot as plt
                 plt.figure("Snapshot")
                 plt.imshow(self.img_rgb)
@@ -74,6 +88,7 @@ class App:
 
     def perform_ocr(self):
         if self.camera_open and hasattr(self, 'img_bgr'):
+            self.thread_pool.submit(self._perform_ocr)
             self.perform_ocr_thread = threading.Thread(target=self._perform_ocr)
             self.perform_ocr_thread.start()
 
@@ -82,29 +97,33 @@ class App:
             self.img_gray = cv2.cvtColor(self.img_bgr, cv2.COLOR_BGR2GRAY)
             cv2.imwrite('gray_paddle.jpg', self.img_gray)
 
-            blurred = cv2.GaussianBlur(self.img_gray, (5, 5), 0)
-            result_en = self.ocr_en.ocr(blurred.copy())
+            blurred = automatic_gaussian_blur(self.img_gray)
+            edged = cv2.Canny(blurred, 30, 150)
+            contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            image_with_contours = cv2.drawContours(self.img_gray.copy(), contours, -1, (0, 255, 0), 2)
+            result_en = self.ocr_en.ocr(image_with_contours)
             result_img = self.img_bgr.copy()
 
             if result_en is not None:
                 for line in result_en:
-                    for word_info in line:
-                        word = word_info[1][0]
-                        similarity_score = self.calculate_similarity(word, '秩父の天然水')
-                        if similarity_score >= 0.85:
-                            rect_color = (0, 255, 0)
-                        else:
-                            rect_color = (0, 0, 255)
-                        confidence = word_info[1][1]
-                        if confidence > 0.85:
-                            coordinates = word_info[0]
-                            x_min = int(min(pt[0] for pt in coordinates))
-                            y_min = int(min(pt[1] for pt in coordinates))
-                            x_max = int(max(pt[0] for pt in coordinates))
-                            y_max = int(max(pt[1] for pt in coordinates))
-                            cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2
-                                          )
-                            result_img = draw_text(result_img, word, (x_min, y_min - 5))
+                    if line is not None:
+                        for word_info in line:
+                            word = word_info[1][0]
+                            similarity_score = self.calculate_similarity(word)
+                            if similarity_score >= 0.85:
+                                rect_color = (0, 255, 0)
+                            else:
+                                rect_color = (0, 0, 255)
+                            confidence = word_info[1][1]
+                            if confidence > 0.85:
+                                coordinates = word_info[0]
+                                x_min = int(min(pt[0] for pt in coordinates))
+                                y_min = int(min(pt[1] for pt in coordinates))
+                                x_max = int(max(pt[0] for pt in coordinates))
+                                y_max = int(max(pt[1] for pt in coordinates))
+                                cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2
+                                              )
+                                result_img = draw_text(result_img, word, (x_min, y_min - 5))
 
                 cv2.imwrite('Result_paddle.jpg', result_img)
 
@@ -114,27 +133,33 @@ class App:
                 plt.axis('off')
                 plt.show()
 
-                # Extract recognized text
                 ocr_result_en = '\n'.join([word_info[1][0] for line in result_en for word_info in line])
                 self.result_label.config(text=ocr_result_en)
 
     def close(self):
         if self.vid and self.vid.isOpened():
             self.vid.release()
-        cv2.destroyAllWindows()  # Close all OpenCV windows
+        cv2.destroyAllWindows()
         self.window.quit()
 
     def draw_text(image, text, position):
         img_pil = Image.fromarray(image)
         draw = ImageDraw.Draw(img_pil)
-        font = ImageFont.truetype('path/to/mplus-1p-regular.ttf', 20)  # specify the .ttf font file
+        font = ImageFont.truetype('path/to/mplus-1p-regular.ttf', 20)
         draw.text(position, text, font=font, fill=(0, 0, 255, 0))
         return np.array(img_pil)
 
-    def calculate_similarity(self, word1, word2):
-        token1 = nlp(word1)
-        token2 = nlp(word2)
-        return token1.similarity(token2)
+    def calculate_similarity(self, word):
+        if word in accepted_words:
+            return 1.0
+        max_sim = 0
+        for accepted_word in accepted_words:
+            token1 = nlp(word)
+            token2 = nlp(accepted_word)
+            sim = token1.similarity(token2)
+            if sim > max_sim:
+                max_sim = sim
+        return max_sim
 
     def update(self):
         if self.camera_open:
@@ -144,8 +169,11 @@ class App:
                 img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-                result_en = self.ocr_en.ocr(blurred.copy())
+                blurred = automatic_gaussian_blur(gray)
+                edged = cv2.Canny(blurred, 30, 150)
+                contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                image_with_contours = cv2.drawContours(gray.copy(), contours, -1, (0, 255, 0), 2)
+                result_en = self.ocr_en.ocr(image_with_contours)
                 result_img = img_bgr.copy()
 
                 if result_en is not None:
@@ -154,8 +182,7 @@ class App:
                         if line is not None:
                             for word_info in line:
                                 word = word_info[1][0]
-                                print(word)
-                                similarity_score = self.calculate_similarity(word, '秩父の天然水')
+                                similarity_score = self.calculate_similarity(word)
                                 if similarity_score >= 0.85:
                                     rect_color = (0, 255, 0)
                                 else:
@@ -187,5 +214,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         if app.vid is not None and app.vid.isOpened():
             app.vid.release()
-            cv2.destroyAllWindows()  # Close all OpenCV windows
+            cv2.destroyAllWindows()
             root.quit()
