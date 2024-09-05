@@ -100,36 +100,33 @@ class MultiLevelButtonSearchApp:
             # クリック時に全てのボタンを無効にする
             clicked_button = self.all_buttons.get((tuple(self.path), key))
             if clicked_button is not None:
-                clicked_button.config(state=tk.DISABLED)
+                # 检查是否是最后一层的按钮
+                if not isinstance(self.current_dict[key], dict):
+                    clicked_button.config(state=tk.DISABLED)
 
-            self.path.append(key)
-
-            if isinstance(self.current_dict[key], dict):
-                self.current_dict = self.current_dict[key]
-                self.populate_buttons(self.current_dict)
-            else:
-                self.result_label.config(
-                    text=f"{SELECTED_TEXT}{self.path[-1]}",
-                    font=('Arial', 14, 'bold'),
-                    fg='black',
-                    background='#F5F5DC'
-                )
-                self.update_callback(self.path[-1])
+                self.path.append(key)
+                if isinstance(self.current_dict[key], dict):
+                    self.current_dict = self.current_dict[key]
+                    self.populate_buttons(self.current_dict)
+                else:
+                    self.result_label.config(
+                        text=f"{SELECTED_TEXT}{self.path[-1]}",
+                        font=('Arial', 14, 'bold'),
+                        fg='black',
+                        background='#F5F5DC'
+                    )
+                    self.update_callback(self.path[-1])
 
         except Exception as e:
             print(f"クリック処理中にエラーが発生しました: {e}")
             self.result_label.config(text="エラーが発生しました。もう一度お試しください。")
 
-        finally:
-            # 確実に全てのボタンの状態を復元する
-            for button in self.all_buttons.values():
-                button.config(state=tk.NORMAL)
-
     def back(self):
         if not self.path:
             return
 
-        self.path.pop()
+        # 获取返回前的按钮
+        last_key = self.path.pop()
         self.current_dict = self.data
         for key in self.path:
             if key in self.current_dict and isinstance(self.current_dict[key], dict):
@@ -138,6 +135,11 @@ class MultiLevelButtonSearchApp:
                 # パスが無効な場合、データのルートにリセット
                 self.current_dict = self.data
                 break
+
+        # 恢复选择的按钮状态
+        for (path, button_key), button in self.all_buttons.items():
+            if path == tuple(self.path) and button_key == last_key:
+                button.config(state=tk.NORMAL)
 
         # ボタンとUIを更新
         self.populate_buttons(self.current_dict)
