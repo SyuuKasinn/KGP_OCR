@@ -3,7 +3,10 @@ import threading
 import tkinter as tk
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+
+import MeCab
 import matplotlib.pyplot as plt
+import torch
 from fuzzywuzzy import fuzz
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
@@ -12,6 +15,12 @@ from PIL import Image, ImageTk, ImageDraw, ImageFont
 import cv2
 from paddleocr import PaddleOCR
 import os
+
+from rapidfuzz.distance import Levenshtein
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from transformers import BertTokenizer, BertModel, BertJapaneseTokenizer
+
 from acceptedWords import ocr_to_accepted_words
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # 環境変数の設定
@@ -150,7 +159,7 @@ class App:
 
         self.button_widgets = {}
         for name, action in self.buttons.items():
-            btn = tk.Button(window, text=name, width=20, command=action)
+            btn = tk.Button(window, text=name, width=20, height=2, command=action)
             btn.pack()
             self.button_widgets[name] = btn
         self.button_widgets["Snapshot"].config(state='disabled')
@@ -165,6 +174,13 @@ class App:
         self.delay = 35  # 更新の遅延時間の設定
         self.update()  # 初回の更新呼び出し
         self.ocr_label = {}
+
+        self.tagger = MeCab.Tagger("-Owakati")
+        self.tokenizer = BertJapaneseTokenizer.from_pretrained('cl-tohoku/bert-base-japanese')
+        self.model = BertModel.from_pretrained('cl-tohoku/bert-base-japanese')
+        self.vectorizer = TfidfVectorizer()
+        self.bert_cache = {}
+        self.tfidf = None
 
     def open_camera(self):
         if not self.camera_open:  # カメラがまだオープンしていない場合
@@ -234,7 +250,7 @@ class App:
 
                                     similarity_score = 0
                                     calculate_word = None
-                                    result = self.calculate_similarity(word)  # 単語の類似度計算
+                                    result = self.combined_similarity(word)  # 単語の類似度計算
                                     if result is not None:
                                         similarity_score, calculate_word = result
                                     confidence = word_info[1][1]  # OCRの信頼度
@@ -310,16 +326,27 @@ class App:
         self.thread_pool.shutdown(wait=True)
         self.window.quit()  # Tkinterウィンドウを終了
 
-    def calculate_similarity(self, word):
+    def combined_similarity(self, word):
         for accepted_word, possible_words in self.ocr_label.items():  # 受け入れ可能な単語リストを確認
             if word in possible_words:
                 word = accepted_word
                 return 1.0, word  # 単語が受け入れ可能な単語リストに存在する場合、類似度は1.0
-            else:
-                return 0, None
 
-        # max_sim = 0  # 最大類似度の初期化
-        # for accepted_word in self.ocr_label.keys():  # すべての受け入れ可能な単語と比較
+        max_sim = 0  # 最大類似度の初期化
+        best_match = word
+        for accepted_word in self.ocr_label.keys():  # すべての受け入れ可能な単語と比較
+            self.prepare_texts(word, accepted_word)
+            # bert_sim = self.get_bert_similarity(word, accepted_word)
+            jaccard_sim = self.jaccard_similarity(word, accepted_word)
+            levenshtein_sim = self.levenshtein_similarity(word, accepted_word)
+
+            sim = 0.5 * jaccard_sim + 0.5 * levenshtein_sim
+
+            if sim > max_sim:  # 最大類似度を更新
+                max_sim = sim
+                best_match = accepted_word
+            return max_sim, best_match  # 最大類似度を返す
+
         #     token1 = nlp(word)  # 単語をSpaCyトークンに変換
         #     token2 = nlp(accepted_word)  # 受け入れ可能な単語をSpaCyトークンに変換
         #     spacy_sim = token1.similarity(token2)  # SpaCyによる類似度計算
@@ -332,8 +359,15 @@ class App:
         # return max_sim  # 最大類似度を返す
 
     def process_ocr(self, image_with_contours):
-        if image_with_contours is not None:
-            result_en = self.ocr_en.ocr(image_with_contours)  # OCR処理の実行
+        result_en = None
+        try:
+            if image_with_contours is not None:
+                result_en = self.ocr_en.ocr(image_with_contours)  # OCR処理的执行
+        except IndexError:
+            print("An IndexError occurred. Continuing with program execution...")
+        except Exception as e:
+            print(f"An error occurred: {str(e)}. Continuing with program execution...")
+        finally:
             return result_en
 
     def update(self):
@@ -375,7 +409,7 @@ class App:
                                 print(word)
                                 similarity_score = 0
                                 calculate_word = None
-                                result = self.calculate_similarity(word)  # 単語の類似度計算
+                                result = self.combined_similarity(word)  # 単語の類似度計算
                                 if result is not None:
                                     similarity_score, calculate_word = result
 
@@ -429,6 +463,46 @@ class App:
         for corrected, possible_responses in ocr_to_accepted_words.items():
             if ocr_label == corrected:
                 self.ocr_label = {corrected: possible_responses}
+
+    def prepare_texts(self, text1, text2):
+        if text1 and text2:
+            self.vectorizer = TfidfVectorizer(stop_words=None)
+            try:
+                self.tfidf = self.vectorizer.fit_transform([text1, text2])
+            except ValueError:
+                print(f"Both text1: '{text1}' and text2: '{text2}' may be empty or contain only stop words.")
+
+    def get_bert_embedding(self, text):
+        if text in self.bert_cache:
+            return self.bert_cache[text]
+
+        inputs = self.tokenizer(text, return_tensors='pt', truncation=True, padding=True)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        embedding = outputs.last_hidden_state[:, 0, :]
+        self.bert_cache[text] = embedding
+        return embedding
+
+    def get_bert_similarity(self, text1, text2):
+        embedding1 = self.get_bert_embedding(text1)
+        embedding2 = self.get_bert_embedding(text2)
+        cos_sim = torch.nn.functional.cosine_similarity(embedding1, embedding2)
+        return cos_sim.item()
+
+    def tokenize_japanese(self, text):
+        return set(self.tagger.parse(text).strip().split())
+
+    def jaccard_similarity(self, text1, text2):
+        set1 = self.tokenize_japanese(text1)
+        set2 = self.tokenize_japanese(text2)
+        intersection = len(set1.intersection(set2))
+        union = len(set1.union(set2))
+        return intersection / union if union != 0 else 0
+
+    def levenshtein_similarity(self, text1, text2):
+        distance = Levenshtein.distance(text1, text2)
+        max_len = max(len(text1), len(text2))
+        return 1 - (distance / max_len)
 
 
 if __name__ == "__main__":
