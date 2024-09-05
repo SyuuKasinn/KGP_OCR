@@ -1,7 +1,7 @@
 import tkinter as tk
 from acceptedWords import ocr_to_accepted_words
 
-# Constants
+# 定数
 BUTTON_PADDING = 5
 BACK_BUTTON_TEXT = "戻る"
 RESULT_LABEL_FONT = ('Arial', 14)
@@ -18,7 +18,7 @@ class MultiLevelButtonSearchApp:
         self.current_dict = self.data
         self.path = []
 
-        # Frame for buttons
+        # ボタンフレーム
         self.button_frame = tk.Frame(self.root)
         self.button_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
 
@@ -31,7 +31,6 @@ class MultiLevelButtonSearchApp:
     def initialize_data(self):
         return {
             "カテゴリー": {
-                # "秩父": {"秩父の天然水": self.ocr_to_accepted_words['秩父の天然水']},
                 "ラミックス": {key: {key: self.ocr_to_accepted_words[key]} for key in [
                     "ラミックス", "ラミックス2", "ラミックス静岡", "ラミックス群馬",
                     "ラミックス湘南", "ラミックス厚木１", "ラミックス厚木２",
@@ -48,82 +47,98 @@ class MultiLevelButtonSearchApp:
             }
         }
 
+    def create_button(self, text, command):
+        return tk.Button(self.button_frame, text=text, width=20, height=2, command=command)
+
     def create_all_buttons(self):
         buttons = {}
 
         def add_buttons(current_dict, path):
             for key in current_dict:
+                command = lambda k=key: self.process_click(k)
+                button = self.create_button(key, command)
+                buttons[(tuple(path), key)] = button
                 if isinstance(current_dict[key], dict):
-                    # Create a button for this key
-                    button = tk.Button(self.button_frame, text=key, width=20, height=2,
-                                       command=lambda k=key: self.process_click(k))
-                    buttons[(tuple(path), key)] = button
-                    # Recurse into the next level
                     add_buttons(current_dict[key], path + [key])
-                else:
-                    # This is a leaf node
-                    button = tk.Button(self.button_frame, text=key, width=20, height=2,
-                                       command=lambda k=key: self.process_click(k))
-                    buttons[(tuple(path), key)] = button
 
         add_buttons(self.data, [])
         return buttons
 
     def populate_buttons(self, dictionary):
-        # Clear previous widgets from the grid
+        # 古いボタンをクリア
         for widget in self.button_frame.winfo_children():
             widget.grid_forget()
 
-        # Grid configuration
-        self.button_frame.columnconfigure(0, weight=1)  # Make the first column expandable
+        # 列の重みを設定
+        self.button_frame.columnconfigure(0, weight=1)
         self.button_frame.columnconfigure(1, weight=1)
         self.button_frame.columnconfigure(2, weight=1)
 
-        # Add back button if needed
+        # 戻るボタンを追加
         if self.path:
-            back_button = tk.Button(self.button_frame, text=BACK_BUTTON_TEXT, width=10, height=1, bg="red", fg="white",
-                                    command=self.back)
+            back_button = self.create_button(BACK_BUTTON_TEXT, self.back)
+            back_button.config(width=10, height=1, bg="red", fg="white")
             back_button.grid(row=0, column=0, padx=BUTTON_PADDING, pady=BUTTON_PADDING, sticky="w")
 
-        # Add buttons for current dictionary
+        # 現在の辞書のボタンを追加
         row = 1
         column = 0
         for key in dictionary.keys():
             if (tuple(self.path), key) in self.all_buttons:
                 button = self.all_buttons[(tuple(self.path), key)]
                 button.grid(row=row, column=column, padx=BUTTON_PADDING, pady=BUTTON_PADDING, sticky="ew")
-
-                # Move to the next column
                 column += 1
-                if column > 2:  # Wrap to the next row after 3 columns
+                if column > 2:
                     column = 0
                     row += 1
 
     def process_click(self, key):
-        self.path.append(key)
+        try:
+            # クリック時に全てのボタンを無効にする
+            for button in self.all_buttons.values():
+                button.config(state=tk.DISABLED)
 
-        if isinstance(self.current_dict[key], dict):
-            self.current_dict = self.current_dict[key]
-            self.populate_buttons(self.current_dict)
-        else:
-            self.result_label.config(text=f"{SELECTED_TEXT}{self.path[-1]}", font=('Arial', 14, 'bold'), fg='black',
-                                     background='#F5F5DC')
-            self.update_callback(self.path[-1])
+            self.path.append(key)
+
+            if isinstance(self.current_dict[key], dict):
+                self.current_dict = self.current_dict[key]
+                self.populate_buttons(self.current_dict)
+            else:
+                self.result_label.config(
+                    text=f"{SELECTED_TEXT}{self.path[-1]}",
+                    font=('Arial', 14, 'bold'),
+                    fg='black',
+                    background='#F5F5DC'
+                )
+                self.update_callback(self.path[-1])
+
+        except Exception as e:
+            print(f"クリック処理中にエラーが発生しました: {e}")
+            self.result_label.config(text="エラーが発生しました。もう一度お試しください。")
+
+        finally:
+            # 確実に全てのボタンの状態を復元する
+            for button in self.all_buttons.values():
+                button.config(state=tk.NORMAL)
 
     def back(self):
         if not self.path:
             return
+
         self.path.pop()
         self.current_dict = self.data
         for key in self.path:
             self.current_dict = self.current_dict.get(key, {})
             if not isinstance(self.current_dict, dict):
-                return
+                # パスが無効な場合、データのルートにリセット
+                self.current_dict = self.data
+                break
 
+        # ボタンとUIを更新
         self.populate_buttons(self.current_dict)
 
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = MultiLevelButtonSearchApp(root, lambda x: print(f"Selected: {x}"))
+    app = MultiLevelButtonSearchApp(root, lambda x: print(f"選択された: {x}"))
     root.mainloop()
