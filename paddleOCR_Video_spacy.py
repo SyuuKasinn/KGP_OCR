@@ -78,32 +78,31 @@ def adjust_clahe_params(self, image, clip_limit_range=(1.0, 10.0), tile_grid_siz
     try:
         mean, stddev = get_sample_stats(image, sample_fraction=0.5)
 
-        # 检查新图像相对于上一个图像是否改变了很小
-        if self.previous_img_stats is not None:
-            prev_mean, prev_stddev = self.previous_img_stats
-            if abs(mean - prev_mean) < self.clahe_threshold and abs(stddev - prev_stddev) < self.clahe_threshold:
-                # 如果图像改变不大，复用上一次的CLAHE参数
-                clahe = self.previous_clahe
-            else:
-                # 计算新的CLAHE参数
-                clip_limit = min(max(stddev / 10.0, clip_limit_range[0]), clip_limit_range[1])
-                height, width = image.shape
-                tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]),
-                                     tile_grid_size_range[1])
-                clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
-        else:
-            # 这是第一个图像，计算CLAHE参数
+        # 以下のコードは、平均値と標準偏差に基づいてCLAHEパラメータを設定するロジックを具現化し、
+        # コードの再利用のためにこれを関数にラップしています
+        def compute_clahe_params():
             clip_limit = min(max(stddev / 10.0, clip_limit_range[0]), clip_limit_range[1])
             height, width = image.shape
-            tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]), tile_grid_size_range[1])
-            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
+            tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]),
+                                 tile_grid_size_range[1])
+            return cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
 
-        # Store current image stats and clahe for next call
-        previous_img_stats = (mean, stddev)
-        previous_clahe = clahe
+        # 前の画像がないか、新しい画像が前の画像と大きく変化した場合は、CLAHEパラメータを再計算します
+        if self.previous_img_stats is None:
+            clahe = compute_clahe_params()
+        else:
+            prev_mean, prev_stddev = self.previous_img_stats
+            if abs(mean - prev_mean) >= self.clahe_threshold or abs(stddev - prev_stddev) >= self.clahe_threshold:
+                clahe = compute_clahe_params()
+            else:
+                clahe = self.previous_clahe
+
+        # 次の呼び出しのために現在の画像統計とclaheを保存する
+        self.previous_img_stats = (mean, stddev)
+        self.previous_clahe = clahe
 
         clahe_image = clahe.apply(image)
-        # Returning the enhanced image
+        # 強調された画像を返す
         return clahe_image
     except Exception as e:
         print(f"Error occurred while adjusting CLAHE parameters: {e}")
@@ -126,28 +125,35 @@ def automatic_gaussian_blur(image):
 
 
 # Python code
-def draw_text(image, text, position, font_path='M_PLUS_1p/MPLUS1p-Regular.ttf', font_size=20, text_color=(0, 0, 255),
-              bg_color=(255, 255, 255), padding=5):
+def draw_text(image, text, position, font_path='M_PLUS_1p/MPLUS1p-Regular.ttf', font_size=20,
+              text_color=(0, 0, 255), bg_color=(255, 255, 255), padding=5):
     try:
-        img_pil = Image.fromarray(image)  # Convert NumPy array to PIL image
-        draw = ImageDraw.Draw(img_pil)  # Create a drawing object
+        img_pil = Image.fromarray(image)  # NumPy 配列を PIL 画像に変換
+        draw = ImageDraw.Draw(img_pil)  # 描画オブジェクトを作成
 
-        # Load font and calculate text size
+        # フォントをロードし、テキストのサイズを計算
         font = ImageFont.truetype(font_path, font_size)
-        text_bbox = font.getbbox(text)  # Modified line
-        text_width, text_height = text_bbox[2], text_bbox[3]  # Updated line to use dimensions from getbbox
+        text_bbox = font.getbbox(text)  # テキストの境界ボックスを取得
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
         x, y = position
 
-        # Draw background rectangle
-        draw.rectangle([x - padding, y - text_height - padding, x + text_width + padding, y + padding], fill=bg_color)
+        # 背景矩形の座標を定義
+        rect_x1 = x - padding
+        rect_y1 = y - text_height - padding
+        rect_x2 = x + text_width + padding
+        rect_y2 = y + padding
 
-        # Draw text
+        # 背景矩形を描画
+        draw.rectangle([rect_x1, rect_y1, rect_x2, rect_y2], fill=bg_color)
+
+        # テキストを描画
         draw.text((x, y - text_height - padding), text, font=font, fill=text_color)
 
-        return np.array(img_pil)  # Convert PIL image back to NumPy array
+        return np.array(img_pil)  # PIL 画像を NumPy 配列に戻す
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return image  # Return the original image if an error occurs
+        print(f"エラーが発生しました: {e}")
+        return image  # エラーが発生した場合は元の画像を返す
 
 
 def calculate_image_iou(box1, box2):
@@ -169,7 +175,7 @@ def analyze_roi(gray):
     ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
     # Draw contours around the defined ROIs
-    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
     roi_image = cv2.drawContours(gray.copy(), contours, -1, (0, 255, 0), 3)
 
     return roi_image
