@@ -1,100 +1,81 @@
-import json
-import os
-import cv2
-import numpy as np
-from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import train_test_split
-from tensorflow.keras.models import Model, load_model
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Dropout, Flatten, Dense, BatchNormalization, \
-    Activation, GlobalAveragePooling2D
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from tensorflow.keras.optimizers import SGD
-from tensorflow.keras.applications import ResNet50
-from tensorflow.keras.regularizers import l2
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
 
-# Setting up the path for image folder and JSON folder
-img_folder = r'C:\syuu\pythonProject\tosho_all_linejson\img\tosho_1870_bunkei'
-json_folder = r'C:\syuu\pythonProject\tosho_all_linejson\json\tosho_1870_bunkei'
+# Set up the figure
+fig, ax = plt.subplots(figsize=(12, 8))
 
-# Initializing empty lists where images and labels will be added
-images = []
-labels = []
+# Define colors
+colors = {
+    'master_db': '#FF9999',
+    'slave_db': '#FFCC99',
+    'backend': '#99CCFF',
+    'frontend': '#FFCCFF',
+    'reporting_server': '#FFFF99',
+    'search': '#CCFFCC',
+    'kubernetes': '#CCCCFF',
+}
 
-# Checking the list of files in both folders
-img_files = os.listdir(img_folder)
-json_files = os.listdir(json_folder)
+# Draw rectangles
+rects = {
+    'master_db': mpatches.Rectangle((0.1, 0.7), 0.1, 0.1, edgecolor='black', facecolor=colors['master_db'], label='Master DB (PostgreSQL)'),
+    'slave_db': mpatches.Rectangle((0.3, 0.7), 0.1, 0.1, edgecolor='black', facecolor=colors['slave_db'], label='Slave DB (PostgreSQL)'),
+    'backend1': mpatches.Rectangle((0.1, 0.5), 0.1, 0.1, edgecolor='black', facecolor=colors['backend'], label='Backend Server 1'),
+    'backend2': mpatches.Rectangle((0.3, 0.5), 0.1, 0.1, edgecolor='black', facecolor=colors['backend'], label='Backend Server 2'),
+    'frontend': mpatches.Rectangle((0.1, 0.3), 0.3, 0.1, edgecolor='black', facecolor=colors['frontend'], label='Frontend (React)'),
+    'reporting_server': mpatches.Rectangle((0.6, 0.7), 0.1, 0.1, edgecolor='black', facecolor=colors['reporting_server'], label='Reporting Server'),
+    'search': mpatches.Rectangle((0.6, 0.5), 0.1, 0.1, edgecolor='black', facecolor=colors['search'], label='Search (Redis)'),
+    'kubernetes': mpatches.Rectangle((0.55, 0.2), 0.2, 0.15, edgecolor='black', facecolor=colors['kubernetes'], label='Kubernetes'),
+}
 
-# Loading each image and corresponding JSON file
-for img_file, json_file in zip(img_files, json_files):
-    img_path = os.path.join(img_folder, img_file)
-    json_path = os.path.join(json_folder, json_file)
+for rect in rects.values():
+    ax.add_patch(rect)
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-        boxes = data['boxes']
+# Draw arrows
+arrows = [
+    ((0.2, 0.75), (0.35, 0.75)),  # Master to Slave
+    ((0.15, 0.7), (0.15, 0.6)),  # Master to Backend 1
+    ((0.35, 0.7), (0.35, 0.6)),  # Slave to Backend 2
+    ((0.2, 0.5), (0.2, 0.4)),  # Backend 1 to Frontend
+    ((0.35, 0.5), (0.35, 0.4)),  # Backend 2 to Frontend
+    ((0.65, 0.7), (0.35, 0.7)),  # Reporting Server to Slave
+    ((0.65, 0.5), (0.35, 0.5)),  # Search to Backend 2
+    ((0.65, 0.55), (0.65, 0.35)),  # Search to Kubernetes
+    ((0.65, 0.75), (0.65, 0.35)),  # Reporting to Kubernetes
+]
 
-    img = cv2.imread(img_path)
+for start, end in arrows:
+    ax.add_line(mlines.Line2D(*zip(start, end), color='black', linewidth=1, marker='>', markersize=5))
 
-    # Loop on each box in JSON file
-    for box in boxes:
-        coordinates = box['quad']
-        roi = img[coordinates['y1']:coordinates['y3'], coordinates['x1']:coordinates['x2']]
+# Add texts
+texts = {
+    'master_db': (0.15, 0.75, 'Master DB\n(PostgreSQL)'),
+    'slave_db': (0.35, 0.75, 'Slave DB\n(PostgreSQL)'),
+    'backend1': (0.15, 0.55, 'Backend Server 1'),
+    'backend2': (0.35, 0.55, 'Backend Server 2'),
+    'frontend': (0.25, 0.35, 'Frontend\n(React)'),
+    'reporting_server': (0.65, 0.75, 'Reporting Server'),
+    'search': (0.65, 0.55, 'Search\n(Redis)'),
+    'kubernetes': (0.65, 0.25, 'Kubernetes'),
+}
 
-        if roi.size != 0:
-            roi = cv2.resize(roi, (224, 224))
-            roi = roi.astype(np.float32) / 255.0
+for key, (x, y, text) in texts.items():
+    ax.text(x, y, text, ha='center', va='center', fontsize=10, bbox=dict(facecolor='white', edgecolor='none', boxstyle='round,pad=0.5'))
 
-            texts = box['text']
+# Add title
+plt.title('System Architecture Diagram')
 
-            images.append(roi)
-            labels.append(texts)
+# Add legend
+handles, labels = [], []
+for rect in rects.values():
+    handles.append(rect)
+    labels.append(rect.get_label())
+ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1))
 
-# Encoding the labels into integers
-encoder = LabelEncoder()
-labels_encoded = encoder.fit_transform(labels)
+# Remove axes
+ax.set_xlim(0, 1)
+ax.set_ylim(0, 1)
+ax.axis('off')
 
-# Converting the lists into numpy arrays
-np_images = np.array(images)
-np_labels = np.array(labels_encoded)
-
-# Splitting the dataset into training and testing sets
-x_train, x_test, y_train, y_test = train_test_split(np_images, np_labels, test_size=0.2)
-
-# Load pre-trained ResNet50 model, discard the top classifier layers
-base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-
-# Add custom classifier layers
-x = base_model.output
-x = GlobalAveragePooling2D()(x)
-x = Dense(128, activation='relu', kernel_regularizer=l2(0.01))(x)
-x = Dropout(0.5)(x)
-predictions = Dense(np.max(np_labels) + 1, activation='softmax')(x)
-
-# Create entire model
-model = Model(inputs=base_model.input, outputs=predictions)
-
-# Freeze the first few layers from the ResNet50 model
-for layer in base_model.layers:
-    layer.trainable = False
-
-# Compile the model
-optimizer = SGD(learning_rate=0.001, momentum=0.9)
-model.compile(optimizer=optimizer,
-              loss='sparse_categorical_crossentropy',
-              metrics=['accuracy'])
-
-# Set callbacks
-early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-model_checkpoint = ModelCheckpoint('ocr_model.keras', save_best_only=True, monitor='val_accuracy', mode='max')
-
-# Train the model
-history = model.fit(x_train, y_train,
-                    epochs=50,
-                    batch_size=16,
-                    validation_data=(x_test, y_test),
-                    callbacks=[early_stopping, model_checkpoint])
-
-# Load the best model and evaluate performance on the test set
-best_model = load_model('ocr_model.keras')
-test_loss, test_acc = best_model.evaluate(x_test, y_test)
-print(f'Test accuracy: {test_acc:.4f}')
+# Show plot
+plt.show()
