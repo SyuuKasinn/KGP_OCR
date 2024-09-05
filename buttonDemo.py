@@ -1,43 +1,60 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkfont
-from paddleOCR_Video_spacy_20240802_04 import App
-from buttonDemo20240802 import MultiLevelButtonSearchApp
+from paddleOCR_Video_spacy_20240805_01 import App
+from MultiLevelButtonSearch20240805_03 import MultiLevelButtonSearchApp
 
 
 class MainApp:
     def __init__(self, root):
         self.root = root
-        customFont = tkfont.Font(family="Helvetica", size=12)  # Customize font
+        self.custom_font = tkfont.Font(family="Helvetica", size=12)  # カスタムフォント
 
-        # Using ttkthemes
-        # self.root = ttkthemes.ThemedTk()  # Uncomment if using ttkthemes
+        # ttkthemesを使用する場合は、以下の行のコメントを外し、テーマを選択します
+        # self.root = ttkthemes.ThemedTk()
         # self.root.get_themes()
-        # self.root.set_theme("plastik")  # Uncomment and change to your liking if using ttkthemes
+        # self.root.set_theme("plastik")  # テーマの例
 
-        self.root.title("Combined GUI Application")
+        self.root.title("組み合わせGUIアプリケーション")
 
+        # 主なフレームを作成し、グリッドレイアウトを使用
         self.main_frame = tk.Frame(self.root)
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        self.main_frame.pack(fill=tk.BOTH,
-                             expand=True,
-                             padx=10,
-                             pady=10)
+        # 一貫した外観のためのスタイルを定義
+        self.style = ttk.Style()
+        self.style.configure('TFrame')
 
-        # Create and place App1 and App2 frames
-        self.app1_frame = tk.Frame(self.main_frame,
-                                   bd=5,
-                                   relief=tk.SUNKEN)  # Change border, color
+        # App1とApp2のフレームを作成して配置
+        self.create_app1_frame()
+        self.create_app2_frame()
 
-        self.app1 = App(self.app1_frame, "Title for App1")
-        self.app1_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)  # Add padding
+    def create_app1_frame(self):
+        self.app1_frame = ttk.Frame(self.main_frame, padding=5, relief=tk.SUNKEN)
+        self.app1_frame.grid(row=0, column=0, sticky='nsew')
 
-        self.app2_frame = tk.Frame(self.main_frame,
-                                   bd=5,
-                                   relief=tk.SUNKEN)  # Change border, color
+        # App1を初期化して配置
+        self.app1 = App(self.app1_frame, "App1のタイトル")
+        self.app1_frame.grid_rowconfigure(0, weight=1)
+        self.app1_frame.grid_columnconfigure(0, weight=1)
 
-        self.app2 = MultiLevelButtonSearchApp(self.app2_frame)
-        self.app2_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)  # Add padding
+    def create_app2_frame(self):
+        self.app2_frame = ttk.Frame(self.main_frame, padding=5, relief=tk.SUNKEN)
+        self.app2_frame.grid(row=0, column=1, sticky='nsew')
+
+        # App2を初期化して配置
+        self.app2 = MultiLevelButtonSearchApp(self.app2_frame, self.update_app1_ocr_label)
+        self.app2_frame.grid_rowconfigure(0, weight=1)
+        self.app2_frame.grid_columnconfigure(0, weight=1)
+
+        # 列と行が比例して拡張するように設定
+        self.main_frame.grid_rowconfigure(0, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_columnconfigure(1, weight=1)
+
+    def update_app1_ocr_label(self, ocr_label):
+        if hasattr(self.app1, 'ocr_label'):
+            self.app1.update_ocr_label(ocr_label)
 
 
 if __name__ == "__main__":
