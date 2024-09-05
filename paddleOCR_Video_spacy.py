@@ -53,23 +53,61 @@ def play_sound(file_path):
     pygame.mixer.music.play()
 
 
-def adjust_clahe_params(image, clip_limit_range=(1.0, 10.0), tile_grid_size_range=(2, 10)):
-    # 计算图像的全局对比度
-    # mean = np.mean(image)
-    stddev = np.std(image)
+def get_sample_stats(image, sample_fraction=0.5):
+    try:
+        # Calculate the size of the sample region
+        height, width = image.shape
+        start_row = int((1 - sample_fraction) / 2 * height)
+        end_row = start_row + int(sample_fraction * height)
+        start_col = int((1 - sample_fraction) / 2 * width)
+        end_col = start_col + int(sample_fraction * width)
 
-    # 根据标准差调整 clipLimit
-    clip_limit = min(max(stddev / 10.0, clip_limit_range[0]), clip_limit_range[1])
+        # Extract and compute statistics for the sample region
+        sample = image[start_row:end_row, start_col:end_col]
+        mean = np.mean(sample)
+        stddev = np.std(sample)
 
-    # 根据图像的尺寸调整 tileGridSize
-    height, width = image.shape
-    tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]), tile_grid_size_range[1])
+        return mean, stddev
+    except Exception as e:
+        print(f"Error in get_sample_stats: {e}")
+        return None, None
 
-    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
-    clahe_image = clahe.apply(image)
 
-    # 返回增强后的图像
-    return clahe_image
+def adjust_clahe_params(self, image, clip_limit_range=(1.0, 10.0), tile_grid_size_range=(2, 10)):
+    try:
+        mean, stddev = get_sample_stats(image, sample_fraction=0.5)
+
+        # 检查新图像相对于上一个图像是否改变了很小
+        if self.previous_img_stats is not None:
+            prev_mean, prev_stddev = self.previous_img_stats
+            if abs(mean - prev_mean) < self.clahe_threshold and abs(stddev - prev_stddev) < self.clahe_threshold:
+                # 如果图像改变不大，复用上一次的CLAHE参数
+                clahe = self.previous_clahe
+            else:
+                # 计算新的CLAHE参数
+                clip_limit = min(max(stddev / 10.0, clip_limit_range[0]), clip_limit_range[1])
+                height, width = image.shape
+                tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]),
+                                     tile_grid_size_range[1])
+                clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
+        else:
+            # 这是第一个图像，计算CLAHE参数
+            clip_limit = min(max(stddev / 10.0, clip_limit_range[0]), clip_limit_range[1])
+            height, width = image.shape
+            tile_grid_size = min(max(int((height + width) / 2000), tile_grid_size_range[0]), tile_grid_size_range[1])
+            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
+
+        # Store current image stats and clahe for next call
+        previous_img_stats = (mean, stddev)
+        previous_clahe = clahe
+
+        clahe_image = clahe.apply(image)
+        # Returning the enhanced image
+        return clahe_image
+    except Exception as e:
+        print(f"Error occurred while adjusting CLAHE parameters: {e}")
+        # Return the original image in case of error
+        return image
 
 
 def automatic_gaussian_blur(image):
@@ -241,6 +279,10 @@ class App:
         self.bert_cache = {}
         self.tfidf = None
 
+        self.previous_img_stats = None
+        self.previous_clahe = None
+        self.clahe_threshold = 1.0
+
     def open_camera(self):
         if not self.camera_open:  # カメラがまだオープンしていない場合
             self.vid = cv2.VideoCapture(self.video_source)  # ビデオキャプチャオブジェクトの作成
@@ -279,7 +321,7 @@ class App:
 
             roi_image = analyze_roi(self.img_gray)
 
-            clahe_image = adjust_clahe_params(roi_image)
+            clahe_image = adjust_clahe_params(self, roi_image)
             blurred = automatic_gaussian_blur(clahe_image)  # ガウスぼかしの適用
 
             kernel = np.ones((3, 3), dtype=np.uint8)  # カーネルの作成
@@ -471,7 +513,7 @@ class App:
                 img_bgr = frame.view()
                 gray = cv2.cvtColor(frame.view(), cv2.COLOR_BGR2GRAY)  # BGR画像をグレースケールに変換
                 roi_image = analyze_roi(gray)
-                clahe_image = adjust_clahe_params(roi_image)
+                clahe_image = adjust_clahe_params(self, roi_image)
                 # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
                 # cl1 = clahe.apply(gray)  # CLAHEの適用
                 blurred = automatic_gaussian_blur(clahe_image)  # ガウスぼかしの適用
