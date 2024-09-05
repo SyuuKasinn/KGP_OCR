@@ -12,11 +12,13 @@ from PIL import Image, ImageTk, ImageDraw, ImageFont
 import cv2
 from paddleocr import PaddleOCR
 import os
-from acceptedWords import ocr_to_accepted_words
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # 環境変数の設定
 nlp = spacy.load('ja_core_news_lg')  # SpaCyの日本語モデルを読み込み
-ocr_to_accepted_words = ocr_to_accepted_words
+ocr_to_accepted_words = {
+    "秩父の天然水": {'秩父の天然水', '父の天然水', '稚父の天然水', '种父の天然水', '地父の天然水', '稚父の天然木',
+                     '地父の天然木', '秩父の天然'}
+}
 
 
 def adjust_clahe_params(image, clip_limit_range=(1.0, 10.0), tile_grid_size_range=(2, 10)):
@@ -131,7 +133,7 @@ def calculate_video_ciou(box1, box2):
 class App:
     def __init__(self, window, window_title, video_source=0):
         self.window = window  # Tkinterウィンドウの設定
-        #self.window.title(window_title)  # ウィンドウのタイトル設定
+        self.window.title(window_title)  # ウィンドウのタイトル設定
         self.video_source = video_source  # ビデオソースの設定
         self.vid = None  # ビデオキャプチャオブジェクトの初期化
         self.ocr_en = PaddleOCR(use_angle_cls=True, lang='japan')  # PaddleOCRの日本語モデルの設定
@@ -405,9 +407,6 @@ class App:
                     # self.result_label.config(text=ocr_result_en)  # OCR結果をラベルに表示（コメントアウトされている）
 
         self.window.after(self.delay, self.update)  # 指定した遅延時間後にupdateメソッドを再実行
-
-    def update_ocr_label(self, ocr_label):
-        pass
 
 
 if __name__ == "__main__":
