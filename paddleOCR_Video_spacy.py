@@ -40,7 +40,7 @@ def draw_text(image, text, position):
     return np.array(img_pil)  # PIL画像をNumPy配列に変換して返す
 
 
-def calculate_iou(box1, box2):
+def calculate_image_iou(box1, box2):
     xi1, yi1, xi2, yi2 = max(box1[0], box2[0]), max(box1[1], box2[1]), min(box1[2], box2[2]), min(box1[3], box2[
         3])  # IOUの計算のための座標の計算
     inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)  # 交差部分の面積の計算
@@ -48,6 +48,61 @@ def calculate_iou(box1, box2):
     box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])  # ボックス2の面積の計算
     union_area = box1_area + box2_area - inter_area  # 結合部分の面積の計算
     return inter_area / union_area  # IOUを返す
+
+
+def calculate_video_ciou(box1, box2):
+    # 解包框坐标
+    x1, y1, x2, y2 = box1
+    x1_, y1_, x2_, y2_ = box2
+
+    # 计算交集的坐标
+    xi1 = max(x1, x1_)
+    yi1 = max(y1, y1_)
+    xi2 = min(x2, x2_)
+    yi2 = min(y2, y2_)
+
+    # 计算交集的面积
+    inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+
+    # 计算两个框的面积
+    box1_area = (x2 - x1) * (y2 - y1)
+    box2_area = (x2_ - x1_) * (y2_ - y1_)
+
+    # 计算并集的面积
+    union_area = box1_area + box2_area - inter_area
+
+    # 计算IoU（交并比）
+    iou = inter_area / union_area
+
+    # 计算最小包围框的坐标
+    min_x = min(x1, x1_)
+    min_y = min(y1, y1_)
+    max_x = max(x2, x2_)
+    max_y = max(y2, y2_)
+
+    # 计算包围框的面积
+    c_area = (max_x - min_x) * (max_y - min_y)
+
+    # 计算GIoU（广义交并比）
+    giou = iou - (c_area - union_area) / c_area
+
+    # 计算中心点距离
+    center1 = np.array([(x1 + x2) / 2, (y1 + y2) / 2])
+    center2 = np.array([(x1_ + x2_) / 2, (y1_ + y2_) / 2])
+    center_dist = np.linalg.norm(center1 - center2)
+
+    # 计算长宽比
+    w1, h1 = x2 - x1, y2 - y1
+    w2, h2 = x2_ - x1_, y2_ - y1_
+    aspect_ratio1 = w1 / h1
+    aspect_ratio2 = w2 / h2
+    aspect_ratio_dist = (aspect_ratio1 - aspect_ratio2) ** 2
+
+    # 计算CIoU（完全交并比）
+    alpha = aspect_ratio_dist / (1 - iou)
+    ciou = giou - (center_dist / (max_x - min_x + max_y - min_y)) - alpha
+
+    return ciou
 
 
 class App:
@@ -171,7 +226,7 @@ class App:
                     if keep[j] == 0:
                         continue
                     _, box2, _, _ = all_results[j]
-                    if calculate_iou(box1, box2) > 0.25:  # IOUが閾値を超えた場合
+                    if calculate_image_iou(box1, box2) > 0.3:  # IOUが閾値を超えた場合
                         keep[j] = 0  # 結果を保持しない
 
             result_img = self.img_bgr.copy()  # 結果画像のコピー
@@ -236,9 +291,7 @@ class App:
         if self.camera_open:  # カメラがオープンしている場合
             ret, frame = self.vid.read()  # フレームの読み取り
             if ret:  # フレームが正常に読み取られた場合
-                img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # BGRからRGBに変換
-                img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)  # RGBからBGRに変換
-
+                img_bgr = frame
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # BGR画像をグレースケールに変換
                 clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # CLAHEオブジェクトの作成
                 cl1 = clahe.apply(gray)  # CLAHEの適用
@@ -299,7 +352,7 @@ class App:
                             if keep[j] == 0:
                                 continue
                             _, box2, _, _ = all_results[j]
-                            if calculate_iou(box1, box2) > 0.25:  # IOUが閾値を超えた場合
+                            if calculate_video_ciou(box1, box2) > 0.3:  # IOUが閾値を超えた場合
                                 keep[j] = 0  # 結果を保持しない
 
                     for k, (word, box, _, rect_color) in enumerate(all_results):  # 結果を画像に描画
