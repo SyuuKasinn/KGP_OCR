@@ -1,3 +1,4 @@
+import functools
 import tkinter as tk
 from acceptedWords import ocr_to_accepted_words
 
@@ -55,11 +56,13 @@ class MultiLevelButtonSearchApp:
 
         def add_buttons(current_dict, path):
             for key in current_dict:
-                command = lambda k=key: self.process_click(k)
+                command = functools.partial(self.process_click, key)
                 button = self.create_button(key, command)
                 buttons[(tuple(path), key)] = button
                 if isinstance(current_dict[key], dict):
-                    add_buttons(current_dict[key], path + [key])
+                    path.append(key)
+                    add_buttons(current_dict[key], path)
+                    path.pop()
 
         add_buttons(self.data, [])
         return buttons
@@ -95,8 +98,9 @@ class MultiLevelButtonSearchApp:
     def process_click(self, key):
         try:
             # クリック時に全てのボタンを無効にする
-            for button in self.all_buttons.values():
-                button.config(state=tk.DISABLED)
+            clicked_button = self.all_buttons.get((tuple(self.path), key))
+            if clicked_button is not None:
+                clicked_button.config(state=tk.DISABLED)
 
             self.path.append(key)
 
@@ -128,8 +132,9 @@ class MultiLevelButtonSearchApp:
         self.path.pop()
         self.current_dict = self.data
         for key in self.path:
-            self.current_dict = self.current_dict.get(key, {})
-            if not isinstance(self.current_dict, dict):
+            if key in self.current_dict and isinstance(self.current_dict[key], dict):
+                self.current_dict = self.current_dict[key]
+            else:
                 # パスが無効な場合、データのルートにリセット
                 self.current_dict = self.data
                 break
