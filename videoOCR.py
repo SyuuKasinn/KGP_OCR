@@ -72,6 +72,7 @@ for rect in rects.values():
     labels.append(rect.get_label())
 ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1))
 
+
 # Remove axes
 ax.set_xlim(0, 1)
 ax.set_ylim(0, 1)
