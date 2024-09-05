@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import pygame
 import torch
 from fuzzywuzzy import fuzz
+from jaconv import jaconv
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import spacy
@@ -30,6 +31,19 @@ from acceptedWords import ocr_to_accepted_words
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # 環境変数の設定
 nlp = spacy.load('ja_core_news_md')  # SpaCyの日本語モデルを読み込み
 ocr_to_accepted_words = ocr_to_accepted_words
+
+
+def preprocess_japanese_text(text):
+    # 日本語テキストの正規化とフィルタリング
+    def normalize_japanese_text(text):
+        # 全角文字を半角に変換
+        text = jaconv.z2h(text, kana=False, digit=True, ascii=True)
+        # ひらがなをカタカナに変換
+        text = jaconv.h2z(text, kana=True, ascii=False, digit=False)
+        return text
+
+    filtered_text = normalize_japanese_text(text)
+    return filtered_text
 
 
 def correct_lens_distortion(image, K, D):
@@ -126,7 +140,7 @@ def automatic_gaussian_blur(image):
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)  # グレースケールからBGRに変換
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # 画像をグレースケールに変換
         kernel_size = math.floor(gray.shape[1] / 20)  # カーネルサイズの計算
-        kernel_size = kernel_size if kernel_size % 2 == 1 else kernel_size + 1  # カーネルサイズを奇数に調整
+        kernel_size = max(3, kernel_size if kernel_size % 2 == 1 else kernel_size + 1)  # カーネルサイズを奇数に調整
         blurred = cv2.GaussianBlur(gray, (kernel_size, kernel_size), 0)  # ガウスぼかしの適用
         return blurred
     except Exception as e:
@@ -393,15 +407,15 @@ class App:
                         for line in result_en:  # 各ラインに対して処理
                             if line is not None:
                                 for word_info in line:  # 各単語に対して処理
-                                    word = word_info[1][0]  # 単語の取得
-
+                                    # word = word_info[1][0]  # 単語の取得
+                                    word = preprocess_japanese_text(word_info[1][0])
                                     similarity_score = 0
                                     calculate_word = None
                                     result = self.combined_similarity(word)  # 単語の類似度計算
                                     if result is not None:
                                         similarity_score, calculate_word = result
                                     confidence = word_info[1][1]  # OCRの信頼度
-                                    if confidence >= 0.85 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
+                                    if confidence >= 0.85 and similarity_score is not None and similarity_score >= 0.90:  # 信頼度と類似度が閾値を超えた場合
                                         rect_color = (0, 255, 0)  # 長方形の色
                                         coordinates = np.array(word_info[0]) / float(scale)  # 単語の座標
                                         x_min = coordinates[:, 0].min()  # 最小x座標
@@ -594,38 +608,51 @@ class App:
 
                 result_img = img_bgr.copy()  # 結果画像のコピー
 
-                if result_en is not None:  # OCR結果が存在する場合
-                    all_results = []  # OCR結果を格納するリスト
-                    for line in result_en:  # 各ラインに対して処理
-                        if line is not None:
-                            for word_info in line:  # 各単語に対して処理
-                                word = word_info[1][0]  # 単語の取得
-                                print(word)
-                                similarity_score = 0
-                                calculate_word = None
-                                result = self.combined_similarity(word)  # 単語の類似度計算
-                                if result is not None:
-                                    similarity_score, calculate_word = result
+                if result_en is not None:  # OCR results exist
+                    # Filter and sort the OCR results
+                    filtered_words = []
+                    for line in result_en:
+                        if line:
+                            # Filter words with confidence >= 0.80
+                            filtered_words.extend([
+                                word_info for word_info in line
+                                if word_info[1][1] >= 0.75
+                            ])
 
-                                confidence = word_info[1][1]  # OCRの信頼度
-                                if confidence >= 0.80 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
-                                    coordinates = np.array(word_info[0])  # 単語の座標
-                                    x_min = int(coordinates[:, 0].min())  # 最小x座標
-                                    y_min = int(coordinates[:, 1].min())  # 最小y座標
-                                    x_max = int(coordinates[:, 0].max())  # 最大x座標
-                                    y_max = int(coordinates[:, 1].max())  # 最大y座標
-                                    rect_color = (0, 255, 0)  # 長方形の色
-                                    word = calculate_word
-                                    all_results.append(
-                                        (word, [x_min, y_min, x_max, y_max], confidence, rect_color))  # 結果をリストに追加
-                                # else:
-                                #     rect_color = (0, 0, 255)
-                                #     coordinates = word_info[0]
-                                #     x_min = int(min(pt[0] for pt in coordinates))
-                                #     y_min = int(min(pt[1] for pt in coordinates))
-                                #     x_max = int(max(pt[0] for pt in coordinates))
-                                #     y_max = int(max(pt[1] for pt in coordinates))
-                                #     all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
+                    # Sort by confidence (descending)
+                    filtered_words.sort(key=lambda wi: wi[1][1], reverse=True)
+
+                    all_results = []  # OCR結果を格納するリスト
+
+                    for word_info in filtered_words:  # 各単語に対して処理
+                        word = preprocess_japanese_text(word_info[1][0])
+                        # word = word_info[1][0]  # 単語の取得
+                        print(word)
+                        similarity_score = 0
+                        calculate_word = None
+                        result = self.combined_similarity(word)  # 単語の類似度計算
+                        if result is not None:
+                            similarity_score, calculate_word = result
+
+                        confidence = word_info[1][1]  # OCRの信頼度
+                        if similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
+                            coordinates = np.array(word_info[0])  # 単語の座標
+                            x_min = int(coordinates[:, 0].min())  # 最小x座標
+                            y_min = int(coordinates[:, 1].min())  # 最小y座標
+                            x_max = int(coordinates[:, 0].max())  # 最大x座標
+                            y_max = int(coordinates[:, 1].max())  # 最大y座標
+                            rect_color = (0, 255, 0)  # 長方形の色
+                            word = calculate_word
+                            all_results.append(
+                                (word, [x_min, y_min, x_max, y_max], confidence, rect_color))  # 結果をリストに追加
+                        # else:
+                        #     rect_color = (0, 0, 255)
+                        #     coordinates = word_info[0]
+                        #     x_min = int(min(pt[0] for pt in coordinates))
+                        #     y_min = int(min(pt[1] for pt in coordinates))
+                        #     x_max = int(max(pt[0] for pt in coordinates))
+                        #     y_max = int(max(pt[1] for pt in coordinates))
+                        #     all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
 
                     # Apply Non-Maximum Suppression (NMS) based on IOU
                     keep = [1] * len(all_results)  # 結果を保持するためのリスト
