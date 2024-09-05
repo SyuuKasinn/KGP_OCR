@@ -1,5 +1,6 @@
 import math
 import multiprocessing
+import re
 import threading
 import tkinter as tk
 from collections import defaultdict
@@ -575,7 +576,7 @@ class App:
                                     similarity_score, calculate_word = result
 
                                 confidence = word_info[1][1]  # OCRの信頼度
-                                if confidence > 0.85 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
+                                if confidence > 0.80 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
                                     coordinates = np.array(word_info[0])  # 単語の座標
                                     x_min = int(coordinates[:, 0].min())  # 最小x座標
                                     y_min = int(coordinates[:, 1].min())  # 最小y座標
@@ -604,7 +605,7 @@ class App:
                             if keep[j] == 0:
                                 continue
                             _, box2, _, _ = all_results[j]
-                            if calculate_video_ciou(box1, box2) > 0.3:  # IOUが閾値を超えた場合
+                            if calculate_video_ciou(box1, box2) > 0.25:  # IOUが閾値を超えた場合
                                 keep[j] = 0  # 結果を保持しない
 
                     for k, (word, box, _, rect_color) in enumerate(all_results):  # 結果を画像に描画
@@ -672,6 +673,7 @@ class App:
         return cos_sim.item()
 
     def tokenize_japanese(self, text):
+        text = re.sub(r'\W', ' ', text)
         return set(self.tagger.parse(text).strip().split())
 
     def jaccard_similarity(self, text1, text2):
