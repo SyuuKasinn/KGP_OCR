@@ -131,7 +131,7 @@ def calculate_video_ciou(box1, box2):
 class App:
     def __init__(self, window, window_title, video_source=0):
         self.window = window  # Tkinterウィンドウの設定
-        #self.window.title(window_title)  # ウィンドウのタイトル設定
+        # self.window.title(window_title)  # ウィンドウのタイトル設定
         self.video_source = video_source  # ビデオソースの設定
         self.vid = None  # ビデオキャプチャオブジェクトの初期化
         self.ocr_en = PaddleOCR(use_angle_cls=True, lang='japan')  # PaddleOCRの日本語モデルの設定
@@ -164,6 +164,7 @@ class App:
 
         self.delay = 35  # 更新の遅延時間の設定
         self.update()  # 初回の更新呼び出し
+        self.ocr_label = {}
 
     def open_camera(self):
         if not self.camera_open:  # カメラがまだオープンしていない場合
@@ -303,11 +304,11 @@ class App:
         self.window.quit()  # Tkinterウィンドウを終了
 
     def calculate_similarity(self, word):
-        for accepted_word, possible_words in ocr_to_accepted_words.items():  # 受け入れ可能な単語リストを確認
+        for accepted_word, possible_words in self.ocr_label.items():  # 受け入れ可能な単語リストを確認
             if word in possible_words:
                 return 1.0  # 単語が受け入れ可能な単語リストに存在する場合、類似度は1.0
         max_sim = 0  # 最大類似度の初期化
-        for accepted_word in ocr_to_accepted_words.keys():  # すべての受け入れ可能な単語と比較
+        for accepted_word in self.ocr_label.keys():  # すべての受け入れ可能な単語と比較
             token1 = nlp(word)  # 単語をSpaCyトークンに変換
             token2 = nlp(accepted_word)  # 受け入れ可能な単語をSpaCyトークンに変換
             spacy_sim = token1.similarity(token2)  # SpaCyによる類似度計算
@@ -407,7 +408,9 @@ class App:
         self.window.after(self.delay, self.update)  # 指定した遅延時間後にupdateメソッドを再実行
 
     def update_ocr_label(self, ocr_label):
-        pass
+        for corrected, possible_responses in ocr_to_accepted_words.items():
+            if ocr_label in corrected:
+                self.ocr_label = {corrected: possible_responses}
 
 
 if __name__ == "__main__":
