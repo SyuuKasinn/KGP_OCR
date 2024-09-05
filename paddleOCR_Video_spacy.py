@@ -3,7 +3,8 @@ import threading
 import tkinter as tk
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import spacy
 from PIL import Image, ImageTk, ImageDraw, ImageFont
@@ -70,7 +71,7 @@ class App:
         self.canvas = tk.Canvas(self.window, width=640, height=480)
         self.canvas.pack()
 
-        self.delay = 50
+        self.delay = 35
         self.update()
 
     def open_camera(self):
@@ -201,6 +202,10 @@ class App:
                 max_sim = sim
         return max_sim
 
+    def process_ocr(self, image_with_contours):
+        result_en = self.ocr_en.ocr(image_with_contours)
+        return result_en
+
     def update(self):
         if self.camera_open:
             ret, frame = self.vid.read()
@@ -213,31 +218,56 @@ class App:
                 edged = cv2.Canny(blurred, 30, 150)
                 contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 image_with_contours = cv2.drawContours(gray.copy(), contours, -1, (0, 255, 0), 2)
-                result_en = self.ocr_en.ocr(image_with_contours)
+
+                with ThreadPoolExecutor() as executor:
+                    future = executor.submit(self.process_ocr, image_with_contours)
+                    result_en = future.result()
+
                 result_img = img_bgr.copy()
 
                 if result_en is not None:
-                    ocr_result_en = ''
+                    all_results = []
                     for line in result_en:
                         if line is not None:
                             for word_info in line:
                                 word = word_info[1][0]
                                 similarity_score = self.calculate_similarity(word)
-                                if similarity_score >= 0.85:
-                                    rect_color = (0, 255, 0)
-                                else:
-                                    rect_color = (0, 0, 255)
-                                ocr_result_en += word + '\n'
                                 confidence = word_info[1][1]
-                                if confidence > 0.85:
+                                if confidence > 0.85 and similarity_score >= 0.85:
                                     coordinates = word_info[0]
                                     x_min = int(min(pt[0] for pt in coordinates))
                                     y_min = int(min(pt[1] for pt in coordinates))
                                     x_max = int(max(pt[0] for pt in coordinates))
                                     y_max = int(max(pt[1] for pt in coordinates))
-                                    cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2
-                                                  )
-                                    result_img = draw_text(result_img, word, (x_min, y_min - 5))
+                                    rect_color = (0, 255, 0)
+                                    all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
+                                else:
+                                    rect_color = (0, 0, 255)
+                                    coordinates = word_info[0]
+                                    x_min = int(min(pt[0] for pt in coordinates))
+                                    y_min = int(min(pt[1] for pt in coordinates))
+                                    x_max = int(max(pt[0] for pt in coordinates))
+                                    y_max = int(max(pt[1] for pt in coordinates))
+                                    all_results.append((word, [x_min, y_min, x_max, y_max], confidence, rect_color))
+
+                    # Apply Non-Maximum Suppression (NMS) based on IOU
+                    keep = [1] * len(all_results)
+                    for i in range(len(all_results)):
+                        if keep[i] == 0:
+                            continue
+                        _, box1, _, _ = all_results[i]
+                        for j in range(i + 1, len(all_results)):
+                            if keep[j] == 0:
+                                continue
+                            _, box2, _, _ = all_results[j]
+                            if calculate_iou(box1, box2) > 0.25:
+                                keep[j] = 0
+
+                    for k, (word, box, _, rect_color) in enumerate(all_results):
+                        if keep[k] == 1:
+                            x_min, y_min, x_max, y_max = box
+                            cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2)
+                            result_img = draw_text(result_img, word, (x_min, y_min - 5))
 
                     self.photo = ImageTk.PhotoImage(image=Image.fromarray(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)))
                     self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
