@@ -231,15 +231,22 @@ class App:
                             if line is not None:
                                 for word_info in line:  # 各単語に対して処理
                                     word = word_info[1][0]  # 単語の取得
-                                    similarity_score = self.calculate_similarity(word)  # 単語の類似度計算
+
+                                    similarity_score = 0
+                                    calculate_word = None
+                                    result = self.calculate_similarity(word)  # 単語の類似度計算
+                                    if result is not None:
+                                        similarity_score, calculate_word = result
                                     confidence = word_info[1][1]  # OCRの信頼度
-                                    if confidence > 0.85 and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
+                                    if confidence > 0.85 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
                                         rect_color = (0, 255, 0)  # 長方形の色
                                         coordinates = word_info[0]  # 単語の座標
                                         x_min = float(min(pt[0] for pt in coordinates)) / scale  # 最小x座標
                                         y_min = float(min(pt[1] for pt in coordinates)) / scale  # 最小y座標
                                         x_max = float(max(pt[0] for pt in coordinates)) / scale  # 最大x座標
                                         y_max = float(max(pt[1] for pt in coordinates)) / scale  # 最大y座標
+
+                                        word = calculate_word
                                         all_results.append(
                                             (word, [x_min, y_min, x_max, y_max], confidence, rect_color))  # 結果をリストに追加
                                     # else:
@@ -306,19 +313,23 @@ class App:
     def calculate_similarity(self, word):
         for accepted_word, possible_words in self.ocr_label.items():  # 受け入れ可能な単語リストを確認
             if word in possible_words:
-                return 1.0  # 単語が受け入れ可能な単語リストに存在する場合、類似度は1.0
-        max_sim = 0  # 最大類似度の初期化
-        for accepted_word in self.ocr_label.keys():  # すべての受け入れ可能な単語と比較
-            token1 = nlp(word)  # 単語をSpaCyトークンに変換
-            token2 = nlp(accepted_word)  # 受け入れ可能な単語をSpaCyトークンに変換
-            spacy_sim = token1.similarity(token2)  # SpaCyによる類似度計算
+                word = accepted_word
+                return 1.0, word  # 単語が受け入れ可能な単語リストに存在する場合、類似度は1.0
+            else:
+                return 0, None
 
-            fuzzy_sim = fuzz.ratio(word.lower(), accepted_word.lower()) / 100.0  # FuzzyWuzzyによる類似度計算
-            sim = max(spacy_sim, fuzzy_sim)  # 最大類似度を選択
-
-            if sim > max_sim:  # 最大類似度を更新
-                max_sim = sim
-        return max_sim  # 最大類似度を返す
+        # max_sim = 0  # 最大類似度の初期化
+        # for accepted_word in self.ocr_label.keys():  # すべての受け入れ可能な単語と比較
+        #     token1 = nlp(word)  # 単語をSpaCyトークンに変換
+        #     token2 = nlp(accepted_word)  # 受け入れ可能な単語をSpaCyトークンに変換
+        #     spacy_sim = token1.similarity(token2)  # SpaCyによる類似度計算
+        #
+        #     fuzzy_sim = fuzz.ratio(word.lower(), accepted_word.lower()) / 100.0  # FuzzyWuzzyによる類似度計算
+        #     sim = max(spacy_sim, fuzzy_sim)  # 最大類似度を選択
+        #
+        #     if sim > max_sim:  # 最大類似度を更新
+        #         max_sim = sim
+        # return max_sim  # 最大類似度を返す
 
     def process_ocr(self, image_with_contours):
         if image_with_contours is not None:
@@ -361,15 +372,22 @@ class App:
                         if line is not None:
                             for word_info in line:  # 各単語に対して処理
                                 word = word_info[1][0]  # 単語の取得
-                                similarity_score = self.calculate_similarity(word)  # 単語の類似度計算
+                                print(word)
+                                similarity_score = 0
+                                calculate_word = None
+                                result = self.calculate_similarity(word)  # 単語の類似度計算
+                                if result is not None:
+                                    similarity_score, calculate_word = result
+
                                 confidence = word_info[1][1]  # OCRの信頼度
-                                if confidence > 0.85 and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
+                                if confidence > 0.85 and similarity_score is not None and similarity_score >= 0.85:  # 信頼度と類似度が閾値を超えた場合
                                     coordinates = word_info[0]  # 単語の座標
                                     x_min = int(min(pt[0] for pt in coordinates))  # 最小x座標
                                     y_min = int(min(pt[1] for pt in coordinates))  # 最小y座標
                                     x_max = int(max(pt[0] for pt in coordinates))  # 最大x座標
                                     y_max = int(max(pt[1] for pt in coordinates))  # 最大y座標
                                     rect_color = (0, 255, 0)  # 長方形の色
+                                    word = calculate_word
                                     all_results.append(
                                         (word, [x_min, y_min, x_max, y_max], confidence, rect_color))  # 結果をリストに追加
                                 # else:
@@ -409,7 +427,7 @@ class App:
 
     def update_ocr_label(self, ocr_label):
         for corrected, possible_responses in ocr_to_accepted_words.items():
-            if ocr_label in corrected:
+            if ocr_label == corrected:
                 self.ocr_label = {corrected: possible_responses}
 
 
