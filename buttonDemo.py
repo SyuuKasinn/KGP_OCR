@@ -2,8 +2,8 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkfont
-from paddleOCR_Video_spacy_20240905_03 import App
-from MultiLevelButtonSearch20240902_02 import MultiLevelButtonSearchApp
+from paddleOCR_Video_spacy import App
+from MultiLevelButtonSearch import MultiLevelButtonSearchApp
 import queue
 
 class MainApp:
