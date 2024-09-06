@@ -602,6 +602,7 @@ class App:
                 try:
                     future = self.thread_pool.submit(self.process_ocr, image_with_contours)  # OCR処理をスレッドプールで実行
                     result_en = future.result()  # 結果の取得
+
                 except Exception as e:
                     print(f"OCR process failed with error: {e}")
                     result_en = None  # or set a reasonable default value
@@ -616,7 +617,7 @@ class App:
                             # Filter words with confidence >= 0.80
                             filtered_words.extend([
                                 word_info for word_info in line
-                                if word_info[1][1] >= 0.75
+                                if word_info[1][1] >= 0.80
                             ])
 
                     # Sort by confidence (descending)
