@@ -33,6 +33,27 @@ nlp = spacy.load('ja_core_news_md')  # SpaCyの日本語モデルを読み込み
 ocr_to_accepted_words = ocr_to_accepted_words
 
 
+def draw_transparent_rectangle(image, top_left, bottom_right, color, alpha=0.5):
+    """
+    画像上に半透明の長方形を描きます。
+
+    パラメータ:
+    - 画像: オリジナル画像 (BGR形式)。
+    - 左上: 長方形の左上の頂点 (x, y)。
+    - 右下: 長方形の右下の頂点 (x, y)。
+    - 色: 長方形の色 (BGR形式)。
+    - 透明度: 透明度レベル (0.0 から 1.0)。
+    """
+    # オリジナル画像と同じサイズのオーバーレイ画像を作成します
+    overlay = image.copy()
+
+    # 長方形をオーバーレイに描きます
+    cv2.rectangle(overlay, top_left, bottom_right, color, thickness=-1)
+
+    # オーバーレイをオリジナル画像と合成します
+    cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+
 def preprocess_japanese_text(text):
     # 日本語テキストの正規化とフィルタリング
     def normalize_japanese_text(text):
@@ -455,7 +476,10 @@ class App:
             for k, (word, box, _, rect_color) in enumerate(all_results):  # 結果を画像に描画
                 if keep[k] == 1:
                     x_min, y_min, x_max, y_max = map(int, box)  # 座標を整数に変換
-                    cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2)  # 長方形を描画
+                    draw_transparent_rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color,
+                                               alpha=0.5)  # 長方形を描画
+
+                    # cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2)  # 長方形を描画
                     result_img = draw_text(result_img, word, (x_min, y_min - 5))  # テキストを描画
 
             detected_objects = any(keep)
@@ -642,7 +666,7 @@ class App:
                             y_min = int(coordinates[:, 1].min())  # 最小y座標
                             x_max = int(coordinates[:, 0].max())  # 最大x座標
                             y_max = int(coordinates[:, 1].max())  # 最大y座標
-                            rect_color = (0, 255, 0)  # 長方形の色
+                            rect_color = (152, 255, 152)  # 長方形の色
                             word = calculate_word
                             all_results.append(
                                 (word, [x_min, y_min, x_max, y_max], confidence, rect_color))  # 結果をリストに追加
@@ -671,7 +695,8 @@ class App:
                     for k, (word, box, _, rect_color) in enumerate(all_results):  # 結果を画像に描画
                         if keep[k] == 1:
                             x_min, y_min, x_max, y_max = box  # 座標を取得
-                            cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color, thickness=2)  # 長方形を描画
+                            draw_transparent_rectangle(result_img, (x_min, y_min), (x_max, y_max), rect_color,
+                                                       alpha=0.5)  # 長方形を描画
                             result_img = draw_text(result_img, word, (x_min, y_min - 10))  # テキストを描画
 
                     detected_objects = any(keep)
