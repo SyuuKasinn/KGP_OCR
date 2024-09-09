@@ -355,6 +355,10 @@ class App:
         try:
             if not self.camera_open:  # カメラがまだオープンしていない場合
                 self.vid = cv2.VideoCapture(self.video_source)  # ビデオキャプチャオブジェクトの作成
+
+                self.vid.set(cv2.CAP_PROP_BUFFERSIZE, 4)
+                self.vid.set(cv2.CAP_PROP_FPS, 30)
+
                 if self.vid.isOpened():  # ビデオキャプチャが成功した場合
                     self.camera_open = True  # カメラがオープンした状態に設定
                     self.canvas.config(width=self.vid.get(cv2.CAP_PROP_FRAME_WIDTH),
