@@ -437,7 +437,7 @@ class App:
                                         similarity_score, calculate_word = result
                                     confidence = word_info[1][1]  # OCRの信頼度
                                     if confidence >= 0.85 and similarity_score is not None and similarity_score >= 0.90:  # 信頼度と類似度が閾値を超えた場合
-                                        rect_color = (0, 255, 0)  # 長方形の色
+                                        rect_color = (152, 255, 152)  # 長方形の色
                                         coordinates = np.array(word_info[0]) / float(scale)  # 単語の座標
                                         x_min = coordinates[:, 0].min()  # 最小x座標
                                         y_min = coordinates[:, 1].min()  # 最小y座標
