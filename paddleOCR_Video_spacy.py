@@ -308,7 +308,7 @@ class App:
         # self.window.title(window_title)  # ウィンドウのタイトル設定
         self.video_source = video_source  # ビデオソースの設定
         self.vid = None  # ビデオキャプチャオブジェクトの初期化
-        self.ocr_en = PaddleOCR(use_angle_cls=True, lang='japan')  # PaddleOCRの日本語モデルの設定
+        self.ocr_en = PaddleOCR(use_angle_cls=True, lang='japan', det=False, rec=False)  # PaddleOCRの日本語モデルの設定
         self.result_label = tk.Label(window, text="光学文字認識")  # OCR結果を表示するラベルの作成
         self.result_label.pack()  # ラベルをウィンドウに配置
         self.camera_open = False  # カメラのオープン状態の初期化
