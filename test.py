@@ -17,11 +17,12 @@ nltk.download('stopwords')
 
 # MeCabとPaddleOCRの初期化
 m = MeCab.Tagger("-Owakati")
-ocr = PaddleOCR(use_angle_cls=True, lang='japan')
+ocr = PaddleOCR(use_angle_cls=True, lang='japan', enable_mkldnn=True, use_gpu=True)
 
 # レンズ歪み補正パラメータ（これらのパラメータはサンプル値であり、実際の較正結果に基づいて調整する必要があります）
 K = np.array([[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1]])  # 内部パラメータ行列
 D = np.array([0, 0, 0, 0])  # 歪み係数
+
 
 def adjust_clahe_params(image, clip_limit_range=(1.0, 10.0), tile_grid_size_range=(2, 10)):
     if image is None or not (len(image.shape) == 3 and image.shape[2] == 3):
@@ -45,8 +46,10 @@ def adjust_clahe_params(image, clip_limit_range=(1.0, 10.0), tile_grid_size_rang
 
     return equalized_image
 
+
 def detail_enhance(image, sigma_s=15, sigma_r=0.2):
     return cv2.detailEnhance(image, sigma_s, sigma_r)
+
 
 def adjust_hsv_v_channel(image, v_increase=30):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -55,19 +58,22 @@ def adjust_hsv_v_channel(image, v_increase=30):
     final_hsv = cv2.merge((h, s, v))
     return cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
 
+
 def automatic_gaussian_blur(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     clahe_image = adjust_clahe_params(image)
     kernel_size = max(1, math.floor(gray.shape[1] / 20) | 1)
     return cv2.GaussianBlur(clahe_image, (kernel_size, kernel_size), 0)
 
+
 def draw_text(image, text, position):
     img_pil = Image.fromarray(image)
     draw = ImageDraw.Draw(img_pil)
-    font_path = 'M_PLUS_1p/MPLUS1p-Regular.ttf'
+    font_path = '../M_PLUS_1p/MPLUS1p-Regular.ttf'
     font = ImageFont.truetype(font_path, 20)
     draw.text(position, text, font=font, fill=(0, 0, 255, 255))
     return np.array(img_pil)
+
 
 def calculate_iou(box1, box2):
     box1, box2 = np.array(box1), np.array(box2)
@@ -83,6 +89,7 @@ def calculate_iou(box1, box2):
     iou = inter_area / union_area
     return iou - (c_area - union_area) / c_area
 
+
 def preprocess_japanese_text(text):
     # 日本語テキストの正規化とフィルタリング
     def normalize_japanese_text(text):
@@ -92,9 +99,9 @@ def preprocess_japanese_text(text):
         text = jaconv.h2z(text, kana=True, ascii=False, digit=False)
         return text
 
-
     filtered_text = normalize_japanese_text(text)
     return filtered_text
+
 
 def analyze_roi(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -117,9 +124,11 @@ def analyze_roi(image):
             gray[y:y + h, x:x + w] = 0
     return cv2.drawContours(image.copy(), filtered_contours, -1, (0, 255, 0), 3)
 
+
 def get_contour(areas, contours, isDark):
     contour = contours[np.argmax(areas)]
     return contour, isDark
+
 
 def get_maximum_uniform_contour(image, fontsize, margin=0):
     """画像で最大の一様な輪郭を検出"""
@@ -155,16 +164,18 @@ def get_maximum_uniform_contour(image, fontsize, margin=0):
 
     return contour, isDark
 
+
 def correct_lens_distortion(image, K, D):
     h, w = image.shape[:2]
     new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(K, D, (w, h), 1, (w, h))
     undistorted_img = cv2.undistort(image, K, D, None, new_camera_matrix)
     return undistorted_img
 
+
 def main():
     start_time = time.time()
     try:
-        image_path = 'C:\\syuu\\pythonProject\\IMG_1867.JPG'
+        image_path = r'C:\syuu\pythonProject\IMG_1867.JPG'
         image = cv2.imread(image_path)
         if image is None:
             raise FileNotFoundError(f"画像ファイル '{image_path}' が見つからないか、読み込むことができません。")
@@ -259,6 +270,7 @@ def main():
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()
