@@ -20,7 +20,7 @@ nltk.download('stopwords')
 m = MeCab.Tagger("-Owakati")
 
 model = RapidOCR(rec_model_path="C:\syuu\pythonProject1\japan_PP-OCRv3_rec_infer.onnx")
-ocr = RapidOCR(text_score=0.85, det_use_cuda=True)
+ocr = RapidOCR(text_score=0.85, use_gpu=True, det_use_cuda=True, rec_use_cuda=True, cls_use_cuda=True)
 
 # レンズ歪み補正パラメータ（これらのパラメータはサンプル値であり、実際の較正結果に基づいて調整する必要があります）
 K = np.array([[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1]])  # 内部パラメータ行列
